@@ -1,0 +1,19 @@
+{
+    "info": {
+        "name": "PiPEmbeds",
+        "authors": [{
+            "name": "ImTheSquid",
+            "discord_id": "262055523896131584",
+            "github_username": "ImTheSquid",
+            "twitter_username": "ImTheSquid11"
+        }],
+        "version": "0.0.1",
+        "description": "PiP Embeds",
+        "github": "https://github.com/ImTheSquid/PiPEmbeds",
+        "github_raw": "https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js"
+    },
+    "changelog": [
+        {"title": "Initial Release", "items": ["Hello, World!"]}
+    ],
+    "main": "bundled.js"
+}
