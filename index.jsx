@@ -7,14 +7,22 @@ module.exports = (Plugin, Library) => {
     const {React, Dispatcher, SelectedChannelStore, MessageStore} = DiscordModules;
 
     const Embed = BdApi.findModuleByProps('EmbedVideo');
-    const MessageAccessories = BdApi.findModuleByProps("MessageAccessories");
 
+    const embedRegistry = new Map();
     const pipRegistry = new Map();
 
     function registerYouTubePiP(videoId, currentTime, messageId, channelId) {
-        pipRegistry.set(`E${channelId}:${messageId}`, {
+        const id = `E${channelId}:${messageId}`;
+        pipRegistry.set(id, {
             videoId: videoId,
             currentTime: currentTime
+        });
+
+        Dispatcher.dirtyDispatch({
+            type: 'PICTURE_IN_PICTURE_OPEN',
+            component: 'VIDEO',
+            id: id,
+            props: {}
         });
     }
 
@@ -35,7 +43,8 @@ module.exports = (Plugin, Library) => {
         constructor(props) {
             super(props);
 
-            this.isEmbed = props.isEmbed ? true : false;
+            this.embedId = props.embedId;
+            this.pipId = props.pipId;
             this.videoId = props.videoId;
 
             this.onPlayerReady = this.onPlayerReady.bind(this);
@@ -47,17 +56,26 @@ module.exports = (Plugin, Library) => {
             // Register listener to change PiP state when channel changes
             Dispatcher.subscribe('CHANNEL_SELECT', this.onChannelSelect);
 
+            Dispatcher.subscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+
+            let messageId = null;
+            let channelId = null;
+            if (embedRegistry.has(this.embedId)) {
+                const obj = embedRegistry.get(this.embedId);
+                messageId = obj.messageId;
+                channelId = obj.channelId;
+            }
+
             this.state = {
                 player: null,
                 playerState: -1,
-                messageId: null,
-                channelId: null,
+                messageId: messageId,
+                channelId: channelId,
             };
         }
 
         onPlayerReady(e) {
             this.setState({player: e.target});
-            //setTimeout(() => {this.state.player.playVideo()}, 3000)
         }
 
         onPlayerError(e) {
@@ -134,7 +152,22 @@ module.exports = (Plugin, Library) => {
             }
         }
 
+        onEmbedId(e) {
+            if (this.state.messageId) {
+                return;
+            }
+
+            if (e.added.has(this.embedId)) {
+                const obj = e.added.get(this.embedId);
+                this.setState({
+                    messageId: obj.messageId,
+                    channelId: obj.channelId
+                });
+            }
+        }
+
         componentWillUnmount() {
+            Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.onChannelSelect);
         }
 
@@ -149,13 +182,13 @@ module.exports = (Plugin, Library) => {
         render() {
             const opts = {
                 playerVars: {
-                    controls: this.isEmbed ? 1 : 0
+                    controls: this.embedId ? 1 : 0
                 }
             }
 
             return (<div>
-                {!this.isEmbed && <div className="coverFrame" onClick={this.coverClick}/>}
-                <YouTube videoId={this.videoId} className={this.isEmbed ? "youtubeEmbed" : "youtubePiP"} onReady={this.onPlayerReady} onError={this.onPlayerError} onStateChange={this.onPlayerState} opts={opts}/>
+                {!this.embedId && <div className="coverFrame" onClick={this.coverClick}/>}
+                <YouTube videoId={this.videoId} className={!!this.embedId ? "youtubeEmbed" : "youtubePiP"} onReady={this.onPlayerReady} onError={this.onPlayerError} onStateChange={this.onPlayerState} opts={opts}/>
             </div>)
         }
     }
@@ -191,28 +224,26 @@ module.exports = (Plugin, Library) => {
             `);
 
             ContextMenu.getDiscordMenu('PictureInPictureVideo').then(comp => {
-                Patcher.after(comp, 'default', (_, args, ret) => {
-                    // Logger.log(args)
-                    // Logger.log(ret)
-
-                    //ret.props.children = [<p>HELLO THIS IS A TEST</p>]
-                    ret.props.children = [<YoutubeFrame/>]
+                Patcher.after(comp, 'default', (_, [info, __], ___) => {
+                    const streamId = info.backgroundKey.split(':')[2];
+                    if (pipRegistry.has(streamId)) {
+                        ret.props.children = [<YoutubeFrame pipId={streamId}/>]
+                    }
                 });
             });
 
-            Logger.log(Embed)
             Patcher.after(Embed.default.prototype, 'render', (that, args, ret) => {
                 if (!(that.props.embed.url && that.props.embed.url.includes('youtube.com'))) {
                     return;
                 }
 
-                Logger.log("call")
+                /*Logger.log("call")
                 Logger.log(args)
                 Logger.log(ret)
-                Logger.log(that)
+                Logger.log(that)*/
 
                 ret.props.children.props.children[6] = (
-                    <YoutubeFrame isEmbed videoId={(new URL(that.props.embed.url)).searchParams.get('v')}/>
+                    <YoutubeFrame embedId={that.props.embed.id} videoId={(new URL(that.props.embed.url)).searchParams.get('v')}/>
                 )
             });
 
@@ -233,6 +264,7 @@ module.exports = (Plugin, Library) => {
             Dispatcher.subscribe('MESSAGE_CREATE', this.messageCreate);
 
             this.channelSelect = _ => {
+                embedRegistry.clear();
                 this.forceUpdateEmbedIds(null);
             }
 
@@ -242,7 +274,7 @@ module.exports = (Plugin, Library) => {
                 if (!arg.type.includes('PICTURE_IN_PICTURE')) {
                     return;
                 }
-                Logger.log("call")
+                Logger.log("PiP Dispatch")
                 Logger.log(arg)
             })
         }
@@ -254,11 +286,28 @@ module.exports = (Plugin, Library) => {
         }
 
         forceUpdateEmbedIds(msg) {
-            const messages = msg ? [msg] : MessageStore.getMessages(SelectedChannelStore.getChannelId())._array;
+            const channelId = SelectedChannelStore.getChannelId();
+            const messages = msg ? [msg] : MessageStore.getMessages(channelId)._array;
+            const addedEmbeds = new Map();
 
             for (const message of messages) {
+                const messageInfo = {
+                    messageId: message.id,
+                    channelId: channelId
+                };
 
+                if (message.embeds.length > 0) {
+                    for (const embed of message.embeds) {
+                        embedRegistry.set(embed.id, messageInfo);
+                        addedEmbeds.set(embed.id, messageInfo);
+                    }
+                }
             }
+
+            Dispatcher.dirtyDispatch({
+                type: 'PIP_EMBED_ID_UPDATE',
+                added: addedEmbeds
+            });
         }
     }
 }

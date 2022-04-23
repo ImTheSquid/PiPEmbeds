@@ -4233,12 +4233,19 @@ var import_react_youtube = __toESM(require_YouTube());
   const { Patcher, Logger, ContextMenu, DiscordModules } = Library;
   const { React, Dispatcher, SelectedChannelStore, MessageStore } = DiscordModules;
   const Embed = BdApi.findModuleByProps("EmbedVideo");
-  const MessageAccessories = BdApi.findModuleByProps("MessageAccessories");
+  const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
   function registerYouTubePiP(videoId, currentTime, messageId, channelId) {
-    pipRegistry.set(`E${channelId}:${messageId}`, {
+    const id = `E${channelId}:${messageId}`;
+    pipRegistry.set(id, {
       videoId,
       currentTime
+    });
+    Dispatcher.dirtyDispatch({
+      type: "PICTURE_IN_PICTURE_OPEN",
+      component: "VIDEO",
+      id,
+      props: {}
     });
   }
   function grabYouTubePiP(messageId, channelId) {
@@ -4254,7 +4261,8 @@ var import_react_youtube = __toESM(require_YouTube());
   class YoutubeFrame extends React.Component {
     constructor(props) {
       super(props);
-      this.isEmbed = props.isEmbed ? true : false;
+      this.embedId = props.embedId;
+      this.pipId = props.pipId;
       this.videoId = props.videoId;
       this.onPlayerReady = this.onPlayerReady.bind(this);
       this.onPlayerError = this.onPlayerError.bind(this);
@@ -4262,11 +4270,19 @@ var import_react_youtube = __toESM(require_YouTube());
       this.coverClick = this.coverClick.bind(this);
       this.onChannelSelect = this.onChannelSelect.bind(this);
       Dispatcher.subscribe("CHANNEL_SELECT", this.onChannelSelect);
+      Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
+      let messageId = null;
+      let channelId = null;
+      if (embedRegistry.has(this.embedId)) {
+        const obj = embedRegistry.get(this.embedId);
+        messageId = obj.messageId;
+        channelId = obj.channelId;
+      }
       this.state = {
         player: null,
         playerState: -1,
-        messageId: null,
-        channelId: null
+        messageId,
+        channelId
       };
     }
     onPlayerReady(e) {
@@ -4299,7 +4315,20 @@ var import_react_youtube = __toESM(require_YouTube());
       } else {
       }
     }
+    onEmbedId(e) {
+      if (this.state.messageId) {
+        return;
+      }
+      if (e.added.has(this.embedId)) {
+        const obj = e.added.get(this.embedId);
+        this.setState({
+          messageId: obj.messageId,
+          channelId: obj.channelId
+        });
+      }
+    }
     componentWillUnmount() {
+      Dispatcher.unsubscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
       Dispatcher.unsubscribe("CHANNEL_SELECT", this.onChannelSelect);
     }
     coverClick(_) {
@@ -4312,15 +4341,15 @@ var import_react_youtube = __toESM(require_YouTube());
     render() {
       const opts = {
         playerVars: {
-          controls: this.isEmbed ? 1 : 0
+          controls: this.embedId ? 1 : 0
         }
       };
-      return /* @__PURE__ */ React.createElement("div", null, !this.isEmbed && /* @__PURE__ */ React.createElement("div", {
+      return /* @__PURE__ */ React.createElement("div", null, !this.embedId && /* @__PURE__ */ React.createElement("div", {
         className: "coverFrame",
         onClick: this.coverClick
       }), /* @__PURE__ */ React.createElement(import_react_youtube.default, {
         videoId: this.videoId,
-        className: this.isEmbed ? "youtubeEmbed" : "youtubePiP",
+        className: !!this.embedId ? "youtubeEmbed" : "youtubePiP",
         onReady: this.onPlayerReady,
         onError: this.onPlayerError,
         onStateChange: this.onPlayerState,
@@ -4358,21 +4387,21 @@ var import_react_youtube = __toESM(require_YouTube());
                 }
             `);
       ContextMenu.getDiscordMenu("PictureInPictureVideo").then((comp) => {
-        Patcher.after(comp, "default", (_, args, ret) => {
-          ret.props.children = [/* @__PURE__ */ React.createElement(YoutubeFrame, null)];
+        Patcher.after(comp, "default", (_, [info, __], ___) => {
+          const streamId = info.backgroundKey.split(":")[2];
+          if (pipRegistry.has(streamId)) {
+            ret.props.children = [/* @__PURE__ */ React.createElement(YoutubeFrame, {
+              pipId: streamId
+            })];
+          }
         });
       });
-      Logger.log(Embed);
-      Patcher.after(Embed.default.prototype, "render", (that, args, ret) => {
+      Patcher.after(Embed.default.prototype, "render", (that, args, ret2) => {
         if (!(that.props.embed.url && that.props.embed.url.includes("youtube.com"))) {
           return;
         }
-        Logger.log("call");
-        Logger.log(args);
-        Logger.log(ret);
-        Logger.log(that);
-        ret.props.children.props.children[6] = /* @__PURE__ */ React.createElement(YoutubeFrame, {
-          isEmbed: true,
+        ret2.props.children.props.children[6] = /* @__PURE__ */ React.createElement(YoutubeFrame, {
+          embedId: that.props.embed.id,
           videoId: new URL(that.props.embed.url).searchParams.get("v")
         });
       });
@@ -4384,14 +4413,15 @@ var import_react_youtube = __toESM(require_YouTube());
       };
       Dispatcher.subscribe("MESSAGE_CREATE", this.messageCreate);
       this.channelSelect = (_) => {
+        embedRegistry.clear();
         this.forceUpdateEmbedIds(null);
       };
       Dispatcher.subscribe("CHANNEL_SELECT", this.channelSelect);
-      Patcher.after(Dispatcher, "dispatch", (_, [arg], ret) => {
+      Patcher.after(Dispatcher, "dispatch", (_, [arg], ret2) => {
         if (!arg.type.includes("PICTURE_IN_PICTURE")) {
           return;
         }
-        Logger.log("call");
+        Logger.log("PiP Dispatch");
         Logger.log(arg);
       });
     }
@@ -4401,9 +4431,25 @@ var import_react_youtube = __toESM(require_YouTube());
       Patcher.unpatchAll();
     }
     forceUpdateEmbedIds(msg) {
-      const messages = msg ? [msg] : MessageStore.getMessages(SelectedChannelStore.getChannelId())._array;
+      const channelId = SelectedChannelStore.getChannelId();
+      const messages = msg ? [msg] : MessageStore.getMessages(channelId)._array;
+      const addedEmbeds = /* @__PURE__ */ new Map();
       for (const message of messages) {
+        const messageInfo = {
+          messageId: message.id,
+          channelId
+        };
+        if (message.embeds.length > 0) {
+          for (const embed of message.embeds) {
+            embedRegistry.set(embed.id, messageInfo);
+            addedEmbeds.set(embed.id, messageInfo);
+          }
+        }
       }
+      Dispatcher.dirtyDispatch({
+        type: "PIP_EMBED_ID_UPDATE",
+        added: addedEmbeds
+      });
     }
   };
 };
