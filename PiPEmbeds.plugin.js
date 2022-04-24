@@ -4269,6 +4269,7 @@ var import_react_youtube = __toESM(require_YouTube());
       this.onPlayerState = this.onPlayerState.bind(this);
       this.coverClick = this.coverClick.bind(this);
       this.onChannelSelect = this.onChannelSelect.bind(this);
+      this.onEmbedId = this.onEmbedId.bind(this);
       Dispatcher.subscribe("CHANNEL_SELECT", this.onChannelSelect);
       Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
       let messageId = null;

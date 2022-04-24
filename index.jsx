@@ -52,6 +52,7 @@ module.exports = (Plugin, Library) => {
             this.onPlayerState = this.onPlayerState.bind(this);
             this.coverClick = this.coverClick.bind(this);
             this.onChannelSelect = this.onChannelSelect.bind(this);
+            this.onEmbedId = this.onEmbedId.bind(this);
 
             // Register listener to change PiP state when channel changes
             Dispatcher.subscribe('CHANNEL_SELECT', this.onChannelSelect);
