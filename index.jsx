@@ -3,37 +3,56 @@ import YouTube from 'react-youtube'
 module.exports = (Plugin, Library) => {
     'use strict';
 
-    const {Patcher, Logger, ContextMenu, DiscordModules} = Library;
-    const {React, Dispatcher, SelectedChannelStore, MessageStore} = DiscordModules;
+    const {Patcher, Logger, DiscordModules, WebpackModules} = Library;
+    const {React, Dispatcher, SelectedChannelStore, MessageStore, ChannelStore, SelectedGuildStore} = DiscordModules;
 
     const Embed = BdApi.findModuleByProps('EmbedVideo');
+    const PiPWindow = WebpackModules.find(m => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
+    const Transitions = BdApi.findModuleByProps("transitionTo");
 
     const embedRegistry = new Map();
     const pipRegistry = new Map();
 
-    function registerYouTubePiP(videoId, currentTime, messageId, channelId) {
-        const id = `E${channelId}:${messageId}`;
+    function registerYouTubePiP(videoId, currentTime, messageId, channelId, guildId) {
+        Logger.log(videoId)
+        Logger.log(currentTime)
+        Logger.log(messageId)
+        Logger.log(channelId)
+        const id = `E${guildId}:${channelId}:${messageId}`;
         pipRegistry.set(id, {
             videoId: videoId,
             currentTime: currentTime
         });
 
+        // channel.name = id;
+
         Dispatcher.dirtyDispatch({
             type: 'PICTURE_IN_PICTURE_OPEN',
             component: 'VIDEO',
             id: id,
-            props: {}
+            props: {
+                channel: ChannelStore.getChannel(channelId)
+            }
         });
     }
 
-    function grabYouTubePiP(messageId, channelId) {
-        const id = `E${channelId}:${messageId}`;
+    function grabYouTubePiP(messageId, channelId, guildId, videoId) {
+        const id = `E${guildId}:${channelId}:${messageId}`;
         if (!pipRegistry.has(id)) {
             return null;
         }
 
         const val = pipRegistry.get(id);
+        if (videoId !== val.videoId) {
+            return null;
+        }
         pipRegistry.delete(id);
+
+        Dispatcher.dirtyDispatch({
+            type: 'PICTURE_IN_PICTURE_CLOSE',
+            id: id
+        });
+
         return val;
     }
 
@@ -46,6 +65,7 @@ module.exports = (Plugin, Library) => {
             this.embedId = props.embedId;
             this.pipId = props.pipId;
             this.videoId = props.videoId;
+            this.currentTime = props.currentTime;
 
             this.onPlayerReady = this.onPlayerReady.bind(this);
             this.onPlayerError = this.onPlayerError.bind(this);
@@ -53,18 +73,29 @@ module.exports = (Plugin, Library) => {
             this.coverClick = this.coverClick.bind(this);
             this.onChannelSelect = this.onChannelSelect.bind(this);
             this.onEmbedId = this.onEmbedId.bind(this);
+            this.onCloseClick = this.onCloseClick.bind(this);
+            this.onDoubleClick = this.onDoubleClick.bind(this);
 
             // Register listener to change PiP state when channel changes
             Dispatcher.subscribe('CHANNEL_SELECT', this.onChannelSelect);
 
             Dispatcher.subscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
 
-            let messageId = null;
-            let channelId = null;
+            let messageId = props.messageId;
+            let channelId = props.channelId;
+            let guildId = props.guildId;
             if (embedRegistry.has(this.embedId)) {
                 const obj = embedRegistry.get(this.embedId);
                 messageId = obj.messageId;
                 channelId = obj.channelId;
+                guildId = obj.guildId;
+            }
+
+            if (messageId && channelId && props.embedId) {
+                let grabbed = grabYouTubePiP(messageId, channelId, guildId, props.videoId);
+                if (grabbed) {
+                    this.currentTime = grabbed.currentTime;
+                }
             }
 
             this.state = {
@@ -72,11 +103,18 @@ module.exports = (Plugin, Library) => {
                 playerState: -1,
                 messageId: messageId,
                 channelId: channelId,
+                guildId: guildId,
+                showClose: false
             };
         }
 
         onPlayerReady(e) {
             this.setState({player: e.target});
+            Logger.log(e.target)
+            if (this.currentTime > 0) {
+                e.target.seekTo(this.currentTime);
+                e.target.playVideo();
+            }
         }
 
         onPlayerError(e) {
@@ -93,57 +131,27 @@ module.exports = (Plugin, Library) => {
             }
         }
 
-        /*componentDidMount() {
-            this.setState({player: new YT.Player(this.state.divId, {
-                width: 400,
-                height: 225,
-                videoId: 'dQw4w9WgXcQ',
-                playerVars: {
-                    controls: this.isEmbed
-                },
-                events: {
-                    onReady: this.onPlayerReady,
-                    onError: this.onPlayerError,
-                    onStateChange: this.onPlayerState,
-                }
-            })})
-        }
-
-        componentWillUnmount() {
-            if (Object.keys(this.state.player.playerInfo).length == 0) {
-                return;
-            }
-            Logger.log("UNMOUNT")
-            Logger.log(this.state.player)
-            this.state.player.stopVideo();
-            Logger.log(typeof(this.state.player.h))
-            this.state.player.h = null;
-        }*/
-
         onChannelSelect(e) {
+            if (embedRegistry.has(this.embedId)) {
+                const obj = embedRegistry.get(this.embedId);
+                this.setState({
+                    messageId: obj.messageId,
+                    channelId: obj.channelId,
+                    guildId: obj.guildId
+                });
+            }
+
             // Don't do anything if not playing
-            if (this.state.playerState !== 1) {
+            if (this.state.playerState !== 1 || !this.state.channelId || !this.state.messageId || !this.state.guildId) {
+                Logger.log('Not playing or no info!');
                 return;
             }
             Logger.log(e)
-            return
             const player = this.state.player.playerInfo;
             // If embedded, OPEN on all changes
-            if (this.isEmbed) {
+            if (this.embedId) {
                 if (lastStartedVideo?.videoId === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
-                    /*Dispatcher.dirtyDispatch({
-                        type: 'PICTURE_IN_PICTURE_OPEN',
-                        component: 'VIDEO',
-                        id: `$${JSON.stringify({
-                            videoId: this.videoId,
-                            currentTime: player.currentTime
-                        })}$`,
-                        props: {
-
-                        }
-                    })*/
-
-                    registerYouTubePiP(this.videoId, this.state.currentTime, this.state.messageId, this.state.channelId);
+                    registerYouTubePiP(this.videoId, this.state.player.getCurrentTime(), this.state.messageId, this.state.channelId, this.state.guildId);
 
                     lastStartedVideo = null;
                 }
@@ -162,7 +170,8 @@ module.exports = (Plugin, Library) => {
                 const obj = e.added.get(this.embedId);
                 this.setState({
                     messageId: obj.messageId,
-                    channelId: obj.channelId
+                    channelId: obj.channelId,
+                    guildId: obj.guildId
                 });
             }
         }
@@ -180,6 +189,14 @@ module.exports = (Plugin, Library) => {
             }
         }
 
+        onCloseClick() {
+            grabYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+        }
+
+        onDoubleClick() {
+            Transitions.transitionTo(`/channels/${this.state.guildId}/${this.state.channelId}/${this.state.messageId}`);
+        }
+
         render() {
             const opts = {
                 playerVars: {
@@ -187,8 +204,15 @@ module.exports = (Plugin, Library) => {
                 }
             }
 
-            return (<div>
-                {!this.embedId && <div className="coverFrame" onClick={this.coverClick}/>}
+            return (<div onDoubleClick={this.onDoubleClick}>
+                {!this.embedId && <div>
+                    <div className='close'>
+                        <button onClick={this.onCloseClick} className='closeWrapper'>
+                            CLOSE
+                        </button>
+                    </div>
+                    <div className="coverFrame" onClick={this.coverClick}/>
+                </div>}
                 <YouTube videoId={this.videoId} className={!!this.embedId ? "youtubeEmbed" : "youtubePiP"} onReady={this.onPlayerReady} onError={this.onPlayerError} onStateChange={this.onPlayerState} opts={opts}/>
             </div>)
         }
@@ -209,6 +233,34 @@ module.exports = (Plugin, Library) => {
                     z-index: 1;
                 }
 
+                .close {
+                    box-shadow: inset 0 40px 10px -10px rgb(0 0 0 / 80%);
+                    position: absolute;
+                    z-index: 2;
+                    display: block;
+                    opacity: 0;
+                    width: 100%;
+                    height: calc(max-content * 2);
+                    transition-duration: 0.3s;
+                    transition-property: opacity;
+                }
+
+                .close:hover {
+                    opacity: 1;
+                }
+
+                .closeWrapper {
+                    margin-top: 6px;
+                    margin-bottom: 15px;
+                    background: none;
+                    color: var(--interactive-normal);
+                    font-weight: bold;
+                }
+
+                .closeWrapper:hover {
+                    color: var(--interactive-hover);
+                }
+
                 .youtubePiP {
                     position: absolute;
                     z-index: -1;
@@ -222,16 +274,37 @@ module.exports = (Plugin, Library) => {
                     margin-top: 16px;
                     border-radius: 4px;
                 }
+
+                .pipRestrict {
+                    width: 320px;
+                    height: 180px;
+                }
             `);
 
-            ContextMenu.getDiscordMenu('PictureInPictureVideo').then(comp => {
+            /*ContextMenu.getDiscordMenu('PictureInPictureVideo').then(comp => {
                 Patcher.after(comp, 'default', (_, [info, __], ___) => {
                     const streamId = info.backgroundKey.split(':')[2];
                     if (pipRegistry.has(streamId)) {
                         ret.props.children = [<YoutubeFrame pipId={streamId}/>]
                     }
                 });
-            });
+            });*/
+
+            Patcher.after(PiPWindow.PictureInPictureWindow.prototype, 'render', (that, args, ret) => {
+                Logger.log(args)
+                Logger.log(ret)
+                Logger.log(that)
+
+                if (pipRegistry.has(that.props.id)) {
+                    const data = pipRegistry.get(that.props.id);
+                    const [guildId, channelId, messageId] = that.props.id.split(':');
+                    ret.props.children.props.children = [
+                        <div className='pipRestrict'>
+                            <YoutubeFrame videoId={data.videoId} currentTime={data.currentTime} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
+                        </div>
+                    ]
+                }
+            })
 
             Patcher.after(Embed.default.prototype, 'render', (that, args, ret) => {
                 if (!(that.props.embed.url && that.props.embed.url.includes('youtube.com'))) {
@@ -270,12 +343,15 @@ module.exports = (Plugin, Library) => {
             }
 
             Dispatcher.subscribe('CHANNEL_SELECT', this.channelSelect);
+            Dispatcher.subscribe('LOAD_MESSAGES_SUCCESS', this.channelSelect);
+
+            return
 
             Patcher.after(Dispatcher, 'dispatch', (_, [arg], ret) => {
-                if (!arg.type.includes('PICTURE_IN_PICTURE')) {
+                /*if (!arg.type.includes('PICTURE_IN_PICTURE')) {
                     return;
-                }
-                Logger.log("PiP Dispatch")
+                }*/
+                //Logger.log("PiP Dispatch")
                 Logger.log(arg)
             })
         }
@@ -283,6 +359,7 @@ module.exports = (Plugin, Library) => {
         onStop() {
             Dispatcher.unsubscribe('MESSAGE_CREATE', this.messageCreate);
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.channelSelect);
+            Dispatcher.unsubscribe('LOAD_MESSAGES_SUCCESS', this.channelSelect);
             Patcher.unpatchAll();
         }
 
@@ -294,7 +371,8 @@ module.exports = (Plugin, Library) => {
             for (const message of messages) {
                 const messageInfo = {
                     messageId: message.id,
-                    channelId: channelId
+                    channelId: channelId,
+                    guildId: SelectedGuildStore.getGuildId()
                 };
 
                 if (message.embeds.length > 0) {
