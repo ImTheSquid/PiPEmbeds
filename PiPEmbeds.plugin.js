@@ -4235,6 +4235,7 @@ var import_react_youtube = __toESM(require_YouTube());
   const Embed = BdApi.findModuleByProps("EmbedVideo");
   const PiPWindow = WebpackModules.find((m) => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
   const Transitions = BdApi.findModuleByProps("transitionTo");
+  const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
   function registerYouTubePiP(videoId, currentTime, messageId, channelId, guildId) {
@@ -4311,12 +4312,12 @@ var import_react_youtube = __toESM(require_YouTube());
         messageId,
         channelId,
         guildId,
-        showClose: false
+        showClose: false,
+        started: !!this.currentTime
       };
     }
     onPlayerReady(e) {
       this.setState({ player: e.target });
-      Logger.log(e.target);
       if (this.currentTime > 0) {
         e.target.seekTo(this.currentTime);
         e.target.playVideo();
@@ -4343,18 +4344,18 @@ var import_react_youtube = __toESM(require_YouTube());
           guildId: obj.guildId
         });
       }
-      if (this.state.playerState !== 1 || !this.state.channelId || !this.state.messageId || !this.state.guildId) {
-        Logger.log("Not playing or no info!");
+      if (!this.state.channelId || !this.state.messageId || !this.state.guildId) {
+        Logger.err("No info for PiP!");
+      }
+      if (this.state.playerState !== 1) {
         return;
       }
-      Logger.log(e);
       const player = this.state.player.playerInfo;
       if (this.embedId) {
         if (lastStartedVideo?.videoId === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
           registerYouTubePiP(this.videoId, this.state.player.getCurrentTime(), this.state.messageId, this.state.channelId, this.state.guildId);
           lastStartedVideo = null;
         }
-      } else {
       }
     }
     onEmbedId(e) {
@@ -4387,38 +4388,65 @@ var import_react_youtube = __toESM(require_YouTube());
     onDoubleClick() {
       Transitions.transitionTo(`/channels/${this.state.guildId}/${this.state.channelId}/${this.state.messageId}`);
     }
-    render() {
+    renderPlayer() {
       const opts = {
         playerVars: {
-          controls: this.embedId ? 1 : 0
+          controls: this.embedId ? 1 : 0,
+          autoplay: 1
         }
       };
       return /* @__PURE__ */ React.createElement("div", {
         onDoubleClick: this.onDoubleClick
       }, !this.embedId && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", {
-        className: "close"
+        className: "playerUi",
+        onClick: this.coverClick
       }, /* @__PURE__ */ React.createElement("button", {
         onClick: this.onCloseClick,
         className: "closeWrapper"
-      }, "CLOSE")), /* @__PURE__ */ React.createElement("div", {
-        className: "coverFrame",
-        onClick: this.coverClick
-      })), /* @__PURE__ */ React.createElement(import_react_youtube.default, {
+      }, "CLOSE"))), /* @__PURE__ */ React.createElement(import_react_youtube.default, {
         videoId: this.videoId,
-        className: !!this.embedId ? "youtubeEmbed" : "youtubePiP",
         onReady: this.onPlayerReady,
+        className: !!this.embedId ? "youtubeEmbed" : "youtubePiP",
         onError: this.onPlayerError,
         onStateChange: this.onPlayerState,
         opts
       }));
     }
+    renderPreview() {
+      return /* @__PURE__ */ React.createElement("div", {
+        className: "embedFrame"
+      }, /* @__PURE__ */ React.createElement("img", {
+        src: `https://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg`,
+        className: "embedThumbnail"
+      }), React.createElement(VideoPlayPill, {
+        externalURL: `https://youtube.com/watch?v=${this.videoId}`,
+        onPlay: () => {
+          this.setState({ started: true });
+        },
+        renderLinkComponent: () => {
+          /* @__PURE__ */ React.createElement("p", null, "LINK");
+        },
+        className: "embedPlayPill"
+      }));
+    }
+    render() {
+      return /* @__PURE__ */ React.createElement("div", {
+        className: this.embedId ? "embedMargin" : ""
+      }, this.state.started || !this.embedId ? this.renderPlayer() : this.renderPreview());
+    }
   }
   return class PipEmbeds extends Plugin {
     onStart() {
       BdApi.injectCSS("PiPEmbeds", `
-                .pipFrame {
+                .fullFrame {
                     width: 100%;
                     height: 100%;
+                }
+
+                .embedFrame {
+                    width: 400px;
+                    height: 225px;
+                    position: relative;
                 }
 
                 .coverFrame {
@@ -4428,19 +4456,19 @@ var import_react_youtube = __toESM(require_YouTube());
                     z-index: 1;
                 }
 
-                .close {
+                .playerUi {
                     box-shadow: inset 0 40px 10px -10px rgb(0 0 0 / 80%);
                     position: absolute;
                     z-index: 2;
                     display: block;
                     opacity: 0;
                     width: 100%;
-                    height: calc(max-content * 2);
+                    height: 100%;
                     transition-duration: 0.3s;
                     transition-property: opacity;
                 }
 
-                .close:hover {
+                .playerUi:hover {
                     opacity: 1;
                 }
 
@@ -4466,25 +4494,34 @@ var import_react_youtube = __toESM(require_YouTube());
                 .youtubeEmbed {
                     width: 400px;
                     height: 225px;
-                    margin-top: 16px;
-                    border-radius: 4px;
+                    border-radius: 8px;
                 }
 
-                .pipRestrict {
-                    width: 320px;
-                    height: 180px;
+                .embedThumbnail {
+                    width: 100%;
+                    height: auto;
+                    border-radius: 8px;
+                    position: absolute;
+                }
+
+                .embedMargin {
+                    margin-top: 16px;
+                }
+
+                .embedPlayPill {
+                    left: 50%;
+                    top: 50%;
+                    transform: translate(-50%, -50%);
+                    position: absolute;
                 }
             `);
-      Patcher.after(PiPWindow.PictureInPictureWindow.prototype, "render", (that, args, ret) => {
-        Logger.log(args);
-        Logger.log(ret);
-        Logger.log(that);
+      Patcher.after(PiPWindow.PictureInPictureWindow.prototype, "render", (that, _, ret) => {
         if (pipRegistry.has(that.props.id)) {
           const data = pipRegistry.get(that.props.id);
           const [guildId, channelId, messageId] = that.props.id.split(":");
           ret.props.children.props.children = [
             /* @__PURE__ */ React.createElement("div", {
-              className: "pipRestrict"
+              style: { width: "320px", height: "180px" }
             }, /* @__PURE__ */ React.createElement(YoutubeFrame, {
               videoId: data.videoId,
               currentTime: data.currentTime,
