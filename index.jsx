@@ -4,7 +4,7 @@ module.exports = (Plugin, Library) => {
     'use strict';
 
     const {Patcher, Logger, DiscordModules, WebpackModules} = Library;
-    const {React, Dispatcher, SelectedChannelStore, MessageStore, ChannelStore, SelectedGuildStore} = DiscordModules;
+    const {React, Dispatcher, SelectedChannelStore, MessageStore, ChannelStore, SelectedGuildStore, ButtonData} = DiscordModules;
 
     const Embed = BdApi.findModuleByProps('EmbedVideo');
     const PiPWindow = WebpackModules.find(m => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
@@ -14,7 +14,7 @@ module.exports = (Plugin, Library) => {
     const embedRegistry = new Map();
     const pipRegistry = new Map();
 
-    function registerYouTubePiP(videoId, currentTime, messageId, channelId, guildId) {
+    function registerYouTubePiP(videoId, volume, currentTime, messageId, channelId, guildId) {
         Logger.log(videoId)
         Logger.log(currentTime)
         Logger.log(messageId)
@@ -22,7 +22,8 @@ module.exports = (Plugin, Library) => {
         const id = `E${guildId}:${channelId}:${messageId}`;
         pipRegistry.set(id, {
             videoId: videoId,
-            currentTime: currentTime
+            currentTime: currentTime,
+            volume: volume
         });
 
         // channel.name = id;
@@ -35,6 +36,10 @@ module.exports = (Plugin, Library) => {
                 channel: ChannelStore.getChannel(channelId)
             }
         });
+    }
+
+    function hasPip(messageId, channelId, guildId) {
+        return pipRegistry.has(`E${guildId}:${channelId}:${messageId}`)
     }
 
     function grabYouTubePiP(messageId, channelId, guildId, videoId) {
@@ -59,14 +64,24 @@ module.exports = (Plugin, Library) => {
 
     let lastStartedVideo = null;
 
+    /*function PiPWindowSelector(names, selectedIndex, onIndexChange) {
+        return (
+
+        );
+    }*/
+
     class ExtractableFrame extends React.Component {
         constructor(props) {
             super(props);
 
             this.embedId = props.embedId;
             this.pipId = props.pipId;
-            this.videoId = props.videoId;
-            this.currentTime = props.currentTime;
+
+            let data = props.data;
+
+            this.videoId = data.videoId;
+            let currentTime = data.currentTime;
+            let volume = data.volume ?? 100;
 
             this.onPlayerReady = this.onPlayerReady.bind(this);
             this.onPlayerError = this.onPlayerError.bind(this);
@@ -76,11 +91,15 @@ module.exports = (Plugin, Library) => {
             this.onEmbedId = this.onEmbedId.bind(this);
             this.onCloseClick = this.onCloseClick.bind(this);
             this.onDoubleClick = this.onDoubleClick.bind(this);
+            this.onPipClose = this.onPipClose.bind(this);
 
             // Register listener to change PiP state when channel changes
             Dispatcher.subscribe('CHANNEL_SELECT', this.onChannelSelect);
 
             Dispatcher.subscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+
+            // Used to figure out if pip window for video closed while in PiP preview embed mode
+            Dispatcher.subscribe('PICTURE_IN_PICTURE_CLOSE', this.onPipClose);
 
             let messageId = props.messageId;
             let channelId = props.channelId;
@@ -92,11 +111,10 @@ module.exports = (Plugin, Library) => {
                 guildId = obj.guildId;
             }
 
-            if (messageId && channelId && props.embedId) {
-                let grabbed = grabYouTubePiP(messageId, channelId, guildId, props.videoId);
-                if (grabbed) {
-                    this.currentTime = grabbed.currentTime;
-                }
+            let canGrab = false;
+            if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId)) {
+                // TODO: Setting to change auto-grab or no
+                canGrab = true;
             }
 
             this.state = {
@@ -106,15 +124,28 @@ module.exports = (Plugin, Library) => {
                 channelId: channelId,
                 guildId: guildId,
                 showClose: false,
-                started: !!this.currentTime
+                started: !!currentTime,
+                currentTime: currentTime,
+                canGrab: canGrab,
+                volume: volume
             };
         }
 
+        grabPlayer() {
+            let grabbed = grabYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+            if (grabbed) {
+                this.setState({currentTime: grabbed.currentTime, started: true, volume: grabbed.volume});
+            }
+        }
+
+        // YouTube stuff
+
         onPlayerReady(e) {
             this.setState({player: e.target});
+            e.target.setVolume(this.state.volume);
 
-            if (this.currentTime > 0) {
-                e.target.seekTo(this.currentTime);
+            if (this.state.currentTime > 0) {
+                e.target.seekTo(this.state.currentTime);
                 e.target.playVideo();
             }
         }
@@ -156,7 +187,7 @@ module.exports = (Plugin, Library) => {
             // If embedded, OPEN on all changes
             if (this.embedId) {
                 if (lastStartedVideo?.videoId === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
-                    registerYouTubePiP(this.videoId, this.state.player.getCurrentTime(), this.state.messageId, this.state.channelId, this.state.guildId);
+                    registerYouTubePiP(this.videoId, this.state.player.getCurrentTime(), this.state.player.getVolume(), this.state.messageId, this.state.channelId, this.state.guildId);
 
                     lastStartedVideo = null;
                 }
@@ -179,9 +210,16 @@ module.exports = (Plugin, Library) => {
             }
         }
 
+        onPipClose(_) {
+            if (!hasPip(this.state.messageId, this.state.channelId, this.state.guildId)) {
+                this.setState({canGrab: false});
+            }
+        }
+
         componentWillUnmount() {
             Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.onChannelSelect);
+            Dispatcher.unsubscribe('PICTURE_IN_PICTURE_CLOSE', this.onPipClose);
         }
 
         coverClick(_) {
@@ -220,7 +258,7 @@ module.exports = (Plugin, Library) => {
             </div>);
         }
 
-        renderPreview() {
+        renderVideoPreview() {
             return (
                 <div className='embedFrame'>
                     <img src={`https://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg`} className='embedThumbnail'/>
@@ -232,10 +270,26 @@ module.exports = (Plugin, Library) => {
                         renderLinkComponent: () => {
                             <p>LINK</p>
                         },
-                        className: 'embedPlayPill'
+                        className: 'absoluteCenter'
                     })}
                 </div>
-            );
+            )
+        }
+
+        renderPipGrabPreview() {
+            return <div className='embedFrame'>
+                <div className='absoluteCenter verticalAlign'>
+                    <svg height="48" width="48" style={{fill: "var(--blurple)"}}><path d="M22.3 25.85H39.05V13H22.3ZM7 40Q5.8 40 4.9 39.1Q4 38.2 4 37V11Q4 9.8 4.9 8.9Q5.8 8 7 8H41Q42.25 8 43.125 8.9Q44 9.8 44 11V37Q44 38.2 43.125 39.1Q42.25 40 41 40ZM7 37Q7 37 7 37Q7 37 7 37V11Q7 11 7 11Q7 11 7 11Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM7 37H41Q41 37 41 37Q41 37 41 37V11Q41 11 41 11Q41 11 41 11H7Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM25.3 22.85V16H36.05V22.85Z"/></svg>
+                    <span style={{'font-weight': 'bold', 'margin-bottom': '10px'}}>Currently in PiP Mode</span>
+                    {React.createElement(ButtonData.default, {
+                        onClick: () => { this.grabPlayer(); }
+                    }, ['Exit PiP'])}
+                </div>
+            </div>
+        }
+
+        renderPreview() {
+            return this.embedId && this.state.canGrab ? this.renderPipGrabPreview() : this.renderVideoPreview();
         }
 
         render() {
@@ -257,6 +311,8 @@ module.exports = (Plugin, Library) => {
                     width: 400px;
                     height: 225px;
                     position: relative;
+                    background: #0f0f0f;
+                    border-radius: 8px;
                 }
 
                 .coverFrame {
@@ -318,11 +374,17 @@ module.exports = (Plugin, Library) => {
                     margin-top: 16px;
                 }
 
-                .embedPlayPill {
+                .absoluteCenter {
                     left: 50%;
                     top: 50%;
                     transform: translate(-50%, -50%);
                     position: absolute;
+                }
+
+                .verticalAlign {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
                 }
             `);
 
@@ -332,7 +394,7 @@ module.exports = (Plugin, Library) => {
                     const [guildId, channelId, messageId] = that.props.id.split(':');
                     ret.props.children.props.children = [
                         <div style={{width: '320px', height: '180px'}}>
-                            <ExtractableFrame videoId={data.videoId} currentTime={data.currentTime} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
+                            <ExtractableFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
                         </div>
                     ]
                 }
@@ -344,7 +406,7 @@ module.exports = (Plugin, Library) => {
                 }
 
                 ret.props.children.props.children[6] = (
-                    <ExtractableFrame embedId={that.props.embed.id} videoId={(new URL(that.props.embed.url)).searchParams.get('v')}/>
+                    <ExtractableFrame embedId={that.props.embed.id} data={{videoId: (new URL(that.props.embed.url)).searchParams.get('v')}}/>
                 )
             });
 

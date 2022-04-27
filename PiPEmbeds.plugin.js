@@ -4231,14 +4231,14 @@ var require_YouTube = __commonJS({
 var import_react_youtube = __toESM(require_YouTube());
   "use strict";
   const { Patcher, Logger, DiscordModules, WebpackModules } = Library;
-  const { React, Dispatcher, SelectedChannelStore, MessageStore, ChannelStore, SelectedGuildStore } = DiscordModules;
+  const { React, Dispatcher, SelectedChannelStore, MessageStore, ChannelStore, SelectedGuildStore, ButtonData } = DiscordModules;
   const Embed = BdApi.findModuleByProps("EmbedVideo");
   const PiPWindow = WebpackModules.find((m) => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
   const Transitions = BdApi.findModuleByProps("transitionTo");
   const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
-  function registerYouTubePiP(videoId, currentTime, messageId, channelId, guildId) {
+  function registerYouTubePiP(videoId, volume, currentTime, messageId, channelId, guildId) {
     Logger.log(videoId);
     Logger.log(currentTime);
     Logger.log(messageId);
@@ -4246,7 +4246,8 @@ var import_react_youtube = __toESM(require_YouTube());
     const id = `E${guildId}:${channelId}:${messageId}`;
     pipRegistry.set(id, {
       videoId,
-      currentTime
+      currentTime,
+      volume
     });
     Dispatcher.dirtyDispatch({
       type: "PICTURE_IN_PICTURE_OPEN",
@@ -4256,6 +4257,9 @@ var import_react_youtube = __toESM(require_YouTube());
         channel: ChannelStore.getChannel(channelId)
       }
     });
+  }
+  function hasPip(messageId, channelId, guildId) {
+    return pipRegistry.has(`E${guildId}:${channelId}:${messageId}`);
   }
   function grabYouTubePiP(messageId, channelId, guildId, videoId) {
     const id = `E${guildId}:${channelId}:${messageId}`;
@@ -4274,13 +4278,15 @@ var import_react_youtube = __toESM(require_YouTube());
     return val;
   }
   let lastStartedVideo = null;
-  class YoutubeFrame extends React.Component {
+  class ExtractableFrame extends React.Component {
     constructor(props) {
       super(props);
       this.embedId = props.embedId;
       this.pipId = props.pipId;
-      this.videoId = props.videoId;
-      this.currentTime = props.currentTime;
+      let data = props.data;
+      this.videoId = data.videoId;
+      let currentTime = data.currentTime;
+      let volume = data.volume ?? 100;
       this.onPlayerReady = this.onPlayerReady.bind(this);
       this.onPlayerError = this.onPlayerError.bind(this);
       this.onPlayerState = this.onPlayerState.bind(this);
@@ -4289,8 +4295,10 @@ var import_react_youtube = __toESM(require_YouTube());
       this.onEmbedId = this.onEmbedId.bind(this);
       this.onCloseClick = this.onCloseClick.bind(this);
       this.onDoubleClick = this.onDoubleClick.bind(this);
+      this.onPipClose = this.onPipClose.bind(this);
       Dispatcher.subscribe("CHANNEL_SELECT", this.onChannelSelect);
       Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
+      Dispatcher.subscribe("PICTURE_IN_PICTURE_CLOSE", this.onPipClose);
       let messageId = props.messageId;
       let channelId = props.channelId;
       let guildId = props.guildId;
@@ -4300,11 +4308,9 @@ var import_react_youtube = __toESM(require_YouTube());
         channelId = obj.channelId;
         guildId = obj.guildId;
       }
-      if (messageId && channelId && props.embedId) {
-        let grabbed = grabYouTubePiP(messageId, channelId, guildId, props.videoId);
-        if (grabbed) {
-          this.currentTime = grabbed.currentTime;
-        }
+      let canGrab = false;
+      if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId)) {
+        canGrab = true;
       }
       this.state = {
         player: null,
@@ -4313,13 +4319,23 @@ var import_react_youtube = __toESM(require_YouTube());
         channelId,
         guildId,
         showClose: false,
-        started: !!this.currentTime
+        started: !!currentTime,
+        currentTime,
+        canGrab,
+        volume
       };
+    }
+    grabPlayer() {
+      let grabbed = grabYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+      if (grabbed) {
+        this.setState({ currentTime: grabbed.currentTime, started: true, volume: grabbed.volume });
+      }
     }
     onPlayerReady(e) {
       this.setState({ player: e.target });
-      if (this.currentTime > 0) {
-        e.target.seekTo(this.currentTime);
+      e.target.setVolume(this.state.volume);
+      if (this.state.currentTime > 0) {
+        e.target.seekTo(this.state.currentTime);
         e.target.playVideo();
       }
     }
@@ -4353,7 +4369,7 @@ var import_react_youtube = __toESM(require_YouTube());
       const player = this.state.player.playerInfo;
       if (this.embedId) {
         if (lastStartedVideo?.videoId === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
-          registerYouTubePiP(this.videoId, this.state.player.getCurrentTime(), this.state.messageId, this.state.channelId, this.state.guildId);
+          registerYouTubePiP(this.videoId, this.state.player.getCurrentTime(), this.state.player.getVolume(), this.state.messageId, this.state.channelId, this.state.guildId);
           lastStartedVideo = null;
         }
       }
@@ -4371,9 +4387,15 @@ var import_react_youtube = __toESM(require_YouTube());
         });
       }
     }
+    onPipClose(_) {
+      if (!hasPip(this.state.messageId, this.state.channelId, this.state.guildId)) {
+        this.setState({ canGrab: false });
+      }
+    }
     componentWillUnmount() {
       Dispatcher.unsubscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
       Dispatcher.unsubscribe("CHANNEL_SELECT", this.onChannelSelect);
+      Dispatcher.unsubscribe("PICTURE_IN_PICTURE_CLOSE", this.onPipClose);
     }
     coverClick(_) {
       if (this.state.playerState === 1) {
@@ -4412,7 +4434,7 @@ var import_react_youtube = __toESM(require_YouTube());
         opts
       }));
     }
-    renderPreview() {
+    renderVideoPreview() {
       return /* @__PURE__ */ React.createElement("div", {
         className: "embedFrame"
       }, /* @__PURE__ */ React.createElement("img", {
@@ -4426,8 +4448,30 @@ var import_react_youtube = __toESM(require_YouTube());
         renderLinkComponent: () => {
           /* @__PURE__ */ React.createElement("p", null, "LINK");
         },
-        className: "embedPlayPill"
+        className: "absoluteCenter"
       }));
+    }
+    renderPipGrabPreview() {
+      return /* @__PURE__ */ React.createElement("div", {
+        className: "embedFrame"
+      }, /* @__PURE__ */ React.createElement("div", {
+        className: "absoluteCenter verticalAlign"
+      }, /* @__PURE__ */ React.createElement("svg", {
+        height: "48",
+        width: "48",
+        style: { fill: "var(--blurple)" }
+      }, /* @__PURE__ */ React.createElement("path", {
+        d: "M22.3 25.85H39.05V13H22.3ZM7 40Q5.8 40 4.9 39.1Q4 38.2 4 37V11Q4 9.8 4.9 8.9Q5.8 8 7 8H41Q42.25 8 43.125 8.9Q44 9.8 44 11V37Q44 38.2 43.125 39.1Q42.25 40 41 40ZM7 37Q7 37 7 37Q7 37 7 37V11Q7 11 7 11Q7 11 7 11Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM7 37H41Q41 37 41 37Q41 37 41 37V11Q41 11 41 11Q41 11 41 11H7Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM25.3 22.85V16H36.05V22.85Z"
+      })), /* @__PURE__ */ React.createElement("span", {
+        style: { "font-weight": "bold", "margin-bottom": "10px" }
+      }, "Currently in PiP Mode"), React.createElement(ButtonData.default, {
+        onClick: () => {
+          this.grabPlayer();
+        }
+      }, ["Exit PiP"])));
+    }
+    renderPreview() {
+      return this.embedId && this.state.canGrab ? this.renderPipGrabPreview() : this.renderVideoPreview();
     }
     render() {
       return /* @__PURE__ */ React.createElement("div", {
@@ -4447,6 +4491,8 @@ var import_react_youtube = __toESM(require_YouTube());
                     width: 400px;
                     height: 225px;
                     position: relative;
+                    background: #0f0f0f;
+                    border-radius: 8px;
                 }
 
                 .coverFrame {
@@ -4508,11 +4554,17 @@ var import_react_youtube = __toESM(require_YouTube());
                     margin-top: 16px;
                 }
 
-                .embedPlayPill {
+                .absoluteCenter {
                     left: 50%;
                     top: 50%;
                     transform: translate(-50%, -50%);
                     position: absolute;
+                }
+
+                .verticalAlign {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
                 }
             `);
       Patcher.after(PiPWindow.PictureInPictureWindow.prototype, "render", (that, _, ret) => {
@@ -4522,9 +4574,8 @@ var import_react_youtube = __toESM(require_YouTube());
           ret.props.children.props.children = [
             /* @__PURE__ */ React.createElement("div", {
               style: { width: "320px", height: "180px" }
-            }, /* @__PURE__ */ React.createElement(YoutubeFrame, {
-              videoId: data.videoId,
-              currentTime: data.currentTime,
+            }, /* @__PURE__ */ React.createElement(ExtractableFrame, {
+              data,
               messageId,
               channelId,
               guildId: guildId.substring(1)
@@ -4536,9 +4587,9 @@ var import_react_youtube = __toESM(require_YouTube());
         if (!(that.props.embed.url && that.props.embed.url.includes("youtube.com"))) {
           return;
         }
-        ret.props.children.props.children[6] = /* @__PURE__ */ React.createElement(YoutubeFrame, {
+        ret.props.children.props.children[6] = /* @__PURE__ */ React.createElement(ExtractableFrame, {
           embedId: that.props.embed.id,
-          videoId: new URL(that.props.embed.url).searchParams.get("v")
+          data: { videoId: new URL(that.props.embed.url).searchParams.get("v") }
         });
       });
       this.messageCreate = (e) => {
