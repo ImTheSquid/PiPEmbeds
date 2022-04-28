@@ -10,6 +10,7 @@ module.exports = (Plugin, Library) => {
     const PiPWindow = WebpackModules.find(m => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
     const Transitions = BdApi.findModuleByProps("transitionTo");
     const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
+    const Video = BdApi.findModuleByDisplayName("MediaPlayer");
 
     const embedRegistry = new Map();
     const pipRegistry = new Map();
@@ -70,7 +71,19 @@ module.exports = (Plugin, Library) => {
         );
     }*/
 
-    class ExtractableFrame extends React.Component {
+    function EmbedCapturePrompt(props) {
+        return <div className='embedFrame'>
+            <div className='absoluteCenter verticalAlign'>
+                <svg height="48" width="48" style={{fill: "var(--blurple)"}}><path d="M22.3 25.85H39.05V13H22.3ZM7 40Q5.8 40 4.9 39.1Q4 38.2 4 37V11Q4 9.8 4.9 8.9Q5.8 8 7 8H41Q42.25 8 43.125 8.9Q44 9.8 44 11V37Q44 38.2 43.125 39.1Q42.25 40 41 40ZM7 37Q7 37 7 37Q7 37 7 37V11Q7 11 7 11Q7 11 7 11Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM7 37H41Q41 37 41 37Q41 37 41 37V11Q41 11 41 11Q41 11 41 11H7Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM25.3 22.85V16H36.05V22.85Z"/></svg>
+                <span style={{'font-weight': 'bold', 'margin-bottom': '10px'}}>Currently in PiP Mode</span>
+                {React.createElement(ButtonData.default, {
+                    onClick: props.onCaptureRequest
+                }, ['Exit PiP'])}
+            </div>
+        </div>
+    }
+
+    class YouTubeFrame extends React.Component {
         constructor(props) {
             super(props);
 
@@ -246,7 +259,7 @@ module.exports = (Plugin, Library) => {
                 }
             }
 
-            return (<div onDoubleClick={this.onDoubleClick}>
+            return <div onDoubleClick={this.onDoubleClick}>
                 {!this.embedId && <div>
                     <div className='playerUi' onClick={this.coverClick}>
                         <button onClick={this.onCloseClick} className='closeWrapper'>
@@ -255,41 +268,27 @@ module.exports = (Plugin, Library) => {
                     </div>
                 </div>}
                 <YouTube videoId={this.videoId} onReady={this.onPlayerReady} className={!!this.embedId ? "youtubeEmbed" : "youtubePiP"} onError={this.onPlayerError} onStateChange={this.onPlayerState} opts={opts}/>
-            </div>);
+            </div>
         }
 
         renderVideoPreview() {
-            return (
-                <div className='embedFrame'>
-                    <img src={`https://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg`} className='embedThumbnail'/>
-                    {React.createElement(VideoPlayPill, {
-                        externalURL: `https://youtube.com/watch?v=${this.videoId}`,
-                        onPlay: () => {
-                            this.setState({started: true});
-                        },
-                        renderLinkComponent: () => {
-                            <p>LINK</p>
-                        },
-                        className: 'absoluteCenter'
-                    })}
-                </div>
-            )
-        }
-
-        renderPipGrabPreview() {
             return <div className='embedFrame'>
-                <div className='absoluteCenter verticalAlign'>
-                    <svg height="48" width="48" style={{fill: "var(--blurple)"}}><path d="M22.3 25.85H39.05V13H22.3ZM7 40Q5.8 40 4.9 39.1Q4 38.2 4 37V11Q4 9.8 4.9 8.9Q5.8 8 7 8H41Q42.25 8 43.125 8.9Q44 9.8 44 11V37Q44 38.2 43.125 39.1Q42.25 40 41 40ZM7 37Q7 37 7 37Q7 37 7 37V11Q7 11 7 11Q7 11 7 11Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM7 37H41Q41 37 41 37Q41 37 41 37V11Q41 11 41 11Q41 11 41 11H7Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM25.3 22.85V16H36.05V22.85Z"/></svg>
-                    <span style={{'font-weight': 'bold', 'margin-bottom': '10px'}}>Currently in PiP Mode</span>
-                    {React.createElement(ButtonData.default, {
-                        onClick: () => { this.grabPlayer(); }
-                    }, ['Exit PiP'])}
-                </div>
+                <img src={`https://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg`} className='embedThumbnail' onClick={() => this.setState({started: true})}/>
+                {React.createElement(VideoPlayPill, {
+                    externalURL: `https://youtube.com/watch?v=${this.videoId}`,
+                    onPlay: () => {
+                        this.setState({started: true});
+                    },
+                    renderLinkComponent: () => {
+                        <p>LINK</p>
+                    },
+                    className: 'absoluteCenter'
+                })}
             </div>
         }
 
         renderPreview() {
-            return this.embedId && this.state.canGrab ? this.renderPipGrabPreview() : this.renderVideoPreview();
+            return this.embedId && this.state.canGrab ? <EmbedCapturePrompt onCaptureRequest={() => { this.grabPlayer(); }}/> : this.renderVideoPreview();
         }
 
         render() {
@@ -394,7 +393,7 @@ module.exports = (Plugin, Library) => {
                     const [guildId, channelId, messageId] = that.props.id.split(':');
                     ret.props.children.props.children = [
                         <div style={{width: '320px', height: '180px'}}>
-                            <ExtractableFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
+                            <YouTubeFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
                         </div>
                     ]
                 }
@@ -406,7 +405,7 @@ module.exports = (Plugin, Library) => {
                 }
 
                 ret.props.children.props.children[6] = (
-                    <ExtractableFrame embedId={that.props.embed.id} data={{videoId: (new URL(that.props.embed.url)).searchParams.get('v')}}/>
+                    <YouTubeFrame embedId={that.props.embed.id} data={{videoId: (new URL(that.props.embed.url)).searchParams.get('v')}}/>
                 )
             });
 
@@ -427,6 +426,23 @@ module.exports = (Plugin, Library) => {
 
             Dispatcher.subscribe('CHANNEL_SELECT', this.channelSelect);
             Dispatcher.subscribe('LOAD_MESSAGES_SUCCESS', this.channelSelect);
+
+            Patcher.after(Video.prototype, 'render', (that, args, ret) => {
+                /*Logger.log(that)
+                Logger.log(args)
+                Logger.log(ret)
+
+                const comp = ret.props.children;
+
+                ret.props.children = (
+                    <DiscordVideoFrame>
+                        {comp}
+                    </DiscordVideoFrame>
+                )*/
+
+                // ret = <DiscordVideoFrame that={that}/>
+                // ret = <video controls={false} playsInline={true} onClick={that.handleVideoClick} onEnded={that.handleEnded} onLoadedMetadata={that.handleLoaded} onProgress={that.handleBuffer} preload={that.state.preload} ref={that.mediaRef} src={that.props.src}/>
+            })
 
             return;
 

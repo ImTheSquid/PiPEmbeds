@@ -4236,6 +4236,7 @@ var import_react_youtube = __toESM(require_YouTube());
   const PiPWindow = WebpackModules.find((m) => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
   const Transitions = BdApi.findModuleByProps("transitionTo");
   const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
+  const Video = BdApi.findModuleByDisplayName("MediaPlayer");
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
   function registerYouTubePiP(videoId, volume, currentTime, messageId, channelId, guildId) {
@@ -4278,7 +4279,24 @@ var import_react_youtube = __toESM(require_YouTube());
     return val;
   }
   let lastStartedVideo = null;
-  class ExtractableFrame extends React.Component {
+  function EmbedCapturePrompt(props) {
+    return /* @__PURE__ */ React.createElement("div", {
+      className: "embedFrame"
+    }, /* @__PURE__ */ React.createElement("div", {
+      className: "absoluteCenter verticalAlign"
+    }, /* @__PURE__ */ React.createElement("svg", {
+      height: "48",
+      width: "48",
+      style: { fill: "var(--blurple)" }
+    }, /* @__PURE__ */ React.createElement("path", {
+      d: "M22.3 25.85H39.05V13H22.3ZM7 40Q5.8 40 4.9 39.1Q4 38.2 4 37V11Q4 9.8 4.9 8.9Q5.8 8 7 8H41Q42.25 8 43.125 8.9Q44 9.8 44 11V37Q44 38.2 43.125 39.1Q42.25 40 41 40ZM7 37Q7 37 7 37Q7 37 7 37V11Q7 11 7 11Q7 11 7 11Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM7 37H41Q41 37 41 37Q41 37 41 37V11Q41 11 41 11Q41 11 41 11H7Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM25.3 22.85V16H36.05V22.85Z"
+    })), /* @__PURE__ */ React.createElement("span", {
+      style: { "font-weight": "bold", "margin-bottom": "10px" }
+    }, "Currently in PiP Mode"), React.createElement(ButtonData.default, {
+      onClick: props.onCaptureRequest
+    }, ["Exit PiP"])));
+  }
+  class YouTubeFrame extends React.Component {
     constructor(props) {
       super(props);
       this.embedId = props.embedId;
@@ -4439,7 +4457,8 @@ var import_react_youtube = __toESM(require_YouTube());
         className: "embedFrame"
       }, /* @__PURE__ */ React.createElement("img", {
         src: `https://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg`,
-        className: "embedThumbnail"
+        className: "embedThumbnail",
+        onClick: () => this.setState({ started: true })
       }), React.createElement(VideoPlayPill, {
         externalURL: `https://youtube.com/watch?v=${this.videoId}`,
         onPlay: () => {
@@ -4451,27 +4470,12 @@ var import_react_youtube = __toESM(require_YouTube());
         className: "absoluteCenter"
       }));
     }
-    renderPipGrabPreview() {
-      return /* @__PURE__ */ React.createElement("div", {
-        className: "embedFrame"
-      }, /* @__PURE__ */ React.createElement("div", {
-        className: "absoluteCenter verticalAlign"
-      }, /* @__PURE__ */ React.createElement("svg", {
-        height: "48",
-        width: "48",
-        style: { fill: "var(--blurple)" }
-      }, /* @__PURE__ */ React.createElement("path", {
-        d: "M22.3 25.85H39.05V13H22.3ZM7 40Q5.8 40 4.9 39.1Q4 38.2 4 37V11Q4 9.8 4.9 8.9Q5.8 8 7 8H41Q42.25 8 43.125 8.9Q44 9.8 44 11V37Q44 38.2 43.125 39.1Q42.25 40 41 40ZM7 37Q7 37 7 37Q7 37 7 37V11Q7 11 7 11Q7 11 7 11Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM7 37H41Q41 37 41 37Q41 37 41 37V11Q41 11 41 11Q41 11 41 11H7Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM25.3 22.85V16H36.05V22.85Z"
-      })), /* @__PURE__ */ React.createElement("span", {
-        style: { "font-weight": "bold", "margin-bottom": "10px" }
-      }, "Currently in PiP Mode"), React.createElement(ButtonData.default, {
-        onClick: () => {
+    renderPreview() {
+      return this.embedId && this.state.canGrab ? /* @__PURE__ */ React.createElement(EmbedCapturePrompt, {
+        onCaptureRequest: () => {
           this.grabPlayer();
         }
-      }, ["Exit PiP"])));
-    }
-    renderPreview() {
-      return this.embedId && this.state.canGrab ? this.renderPipGrabPreview() : this.renderVideoPreview();
+      }) : this.renderVideoPreview();
     }
     render() {
       return /* @__PURE__ */ React.createElement("div", {
@@ -4574,7 +4578,7 @@ var import_react_youtube = __toESM(require_YouTube());
           ret.props.children.props.children = [
             /* @__PURE__ */ React.createElement("div", {
               style: { width: "320px", height: "180px" }
-            }, /* @__PURE__ */ React.createElement(ExtractableFrame, {
+            }, /* @__PURE__ */ React.createElement(YouTubeFrame, {
               data,
               messageId,
               channelId,
@@ -4587,7 +4591,7 @@ var import_react_youtube = __toESM(require_YouTube());
         if (!(that.props.embed.url && that.props.embed.url.includes("youtube.com"))) {
           return;
         }
-        ret.props.children.props.children[6] = /* @__PURE__ */ React.createElement(ExtractableFrame, {
+        ret.props.children.props.children[6] = /* @__PURE__ */ React.createElement(YouTubeFrame, {
           embedId: that.props.embed.id,
           data: { videoId: new URL(that.props.embed.url).searchParams.get("v") }
         });
@@ -4605,6 +4609,8 @@ var import_react_youtube = __toESM(require_YouTube());
       };
       Dispatcher.subscribe("CHANNEL_SELECT", this.channelSelect);
       Dispatcher.subscribe("LOAD_MESSAGES_SUCCESS", this.channelSelect);
+      Patcher.after(Video.prototype, "render", (that, args, ret) => {
+      });
       return;
       Patcher.after(Dispatcher, "dispatch", (_, [arg], ret) => {
         Logger.log(arg);
