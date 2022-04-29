@@ -4262,11 +4262,12 @@ var import_react_youtube = __toESM(require_YouTube());
   function hasPip(messageId, channelId, guildId) {
     return pipRegistry.has(`E${guildId}:${channelId}:${messageId}`);
   }
-  function grabYouTubePiP(messageId, channelId, guildId, videoId) {
+  function captureYouTubePiP(messageId, channelId, guildId, videoId) {
     const id = `E${guildId}:${channelId}:${messageId}`;
     if (!pipRegistry.has(id)) {
       return null;
     }
+    Dispatcher.dirtyDispatch({ type: "PIP_SHOULD_UPDATE_CURRENT_TIME" });
     const val = pipRegistry.get(id);
     if (videoId !== val.videoId) {
       return null;
@@ -4300,7 +4301,6 @@ var import_react_youtube = __toESM(require_YouTube());
     constructor(props) {
       super(props);
       this.embedId = props.embedId;
-      this.pipId = props.pipId;
       let data = props.data;
       this.videoId = data.videoId;
       let currentTime = data.currentTime;
@@ -4314,8 +4314,12 @@ var import_react_youtube = __toESM(require_YouTube());
       this.onCloseClick = this.onCloseClick.bind(this);
       this.onDoubleClick = this.onDoubleClick.bind(this);
       this.onPipClose = this.onPipClose.bind(this);
+      this.shouldUpdateCurrentTime = this.shouldUpdateCurrentTime.bind(this);
       Dispatcher.subscribe("CHANNEL_SELECT", this.onChannelSelect);
       Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
+      if (!this.embedId) {
+        Dispatcher.subscribe("PIP_SHOULD_UPDATE_CURRENT_TIME", this.shouldUpdateCurrentTime);
+      }
       Dispatcher.subscribe("PICTURE_IN_PICTURE_CLOSE", this.onPipClose);
       let messageId = props.messageId;
       let channelId = props.channelId;
@@ -4344,7 +4348,7 @@ var import_react_youtube = __toESM(require_YouTube());
       };
     }
     grabPlayer() {
-      let grabbed = grabYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+      let grabbed = captureYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
       if (grabbed) {
         this.setState({ currentTime: grabbed.currentTime, started: true, volume: grabbed.volume });
       }
@@ -4405,6 +4409,12 @@ var import_react_youtube = __toESM(require_YouTube());
         });
       }
     }
+    shouldUpdateCurrentTime(_) {
+      const id = `E${this.state.guildId}:${this.state.channelId}:${this.state.messageId}`;
+      let old = pipRegistry.get(id);
+      old.currentTime = this.state.player.getCurrentTime();
+      pipRegistry.set(id, old);
+    }
     onPipClose(_) {
       if (!hasPip(this.state.messageId, this.state.channelId, this.state.guildId)) {
         this.setState({ canGrab: false });
@@ -4414,6 +4424,9 @@ var import_react_youtube = __toESM(require_YouTube());
       Dispatcher.unsubscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
       Dispatcher.unsubscribe("CHANNEL_SELECT", this.onChannelSelect);
       Dispatcher.unsubscribe("PICTURE_IN_PICTURE_CLOSE", this.onPipClose);
+      if (!this.embedId) {
+        Dispatcher.unsubscribe("PIP_SHOULD_UPDATE_CURRENT_TIME", this.shouldUpdateCurrentTime);
+      }
     }
     coverClick(_) {
       if (this.state.playerState === 1) {
@@ -4423,7 +4436,7 @@ var import_react_youtube = __toESM(require_YouTube());
       }
     }
     onCloseClick() {
-      grabYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+      captureYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
     }
     onDoubleClick() {
       Transitions.transitionTo(`/channels/${this.state.guildId}/${this.state.channelId}/${this.state.messageId}`);
@@ -4617,6 +4630,7 @@ var import_react_youtube = __toESM(require_YouTube());
       });
     }
     onStop() {
+      BdApi.clearCSS("PiPEmbeds");
       Dispatcher.unsubscribe("MESSAGE_CREATE", this.messageCreate);
       Dispatcher.unsubscribe("CHANNEL_SELECT", this.channelSelect);
       Dispatcher.unsubscribe("LOAD_MESSAGES_SUCCESS", this.channelSelect);

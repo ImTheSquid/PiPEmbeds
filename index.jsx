@@ -43,11 +43,14 @@ module.exports = (Plugin, Library) => {
         return pipRegistry.has(`E${guildId}:${channelId}:${messageId}`)
     }
 
-    function grabYouTubePiP(messageId, channelId, guildId, videoId) {
+    function captureYouTubePiP(messageId, channelId, guildId, videoId) {
         const id = `E${guildId}:${channelId}:${messageId}`;
         if (!pipRegistry.has(id)) {
             return null;
         }
+
+        // Request that all PiP players update the current time of respective videos in preparation for possible capture
+        Dispatcher.dirtyDispatch({type: 'PIP_SHOULD_UPDATE_CURRENT_TIME'});
 
         const val = pipRegistry.get(id);
         if (videoId !== val.videoId) {
@@ -88,7 +91,6 @@ module.exports = (Plugin, Library) => {
             super(props);
 
             this.embedId = props.embedId;
-            this.pipId = props.pipId;
 
             let data = props.data;
 
@@ -105,11 +107,16 @@ module.exports = (Plugin, Library) => {
             this.onCloseClick = this.onCloseClick.bind(this);
             this.onDoubleClick = this.onDoubleClick.bind(this);
             this.onPipClose = this.onPipClose.bind(this);
+            this.shouldUpdateCurrentTime = this.shouldUpdateCurrentTime.bind(this);
 
             // Register listener to change PiP state when channel changes
             Dispatcher.subscribe('CHANNEL_SELECT', this.onChannelSelect);
 
             Dispatcher.subscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+
+            if (!this.embedId) {
+                Dispatcher.subscribe('PIP_SHOULD_UPDATE_CURRENT_TIME', this.shouldUpdateCurrentTime);
+            }
 
             // Used to figure out if pip window for video closed while in PiP preview embed mode
             Dispatcher.subscribe('PICTURE_IN_PICTURE_CLOSE', this.onPipClose);
@@ -145,7 +152,7 @@ module.exports = (Plugin, Library) => {
         }
 
         grabPlayer() {
-            let grabbed = grabYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+            let grabbed = captureYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
             if (grabbed) {
                 this.setState({currentTime: grabbed.currentTime, started: true, volume: grabbed.volume});
             }
@@ -223,6 +230,13 @@ module.exports = (Plugin, Library) => {
             }
         }
 
+        shouldUpdateCurrentTime(_) {
+            const id = `E${this.state.guildId}:${this.state.channelId}:${this.state.messageId}`;
+            let old = pipRegistry.get(id);
+            old.currentTime = this.state.player.getCurrentTime();
+            pipRegistry.set(id, old);
+        }
+
         onPipClose(_) {
             if (!hasPip(this.state.messageId, this.state.channelId, this.state.guildId)) {
                 this.setState({canGrab: false});
@@ -233,6 +247,10 @@ module.exports = (Plugin, Library) => {
             Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.onChannelSelect);
             Dispatcher.unsubscribe('PICTURE_IN_PICTURE_CLOSE', this.onPipClose);
+
+            if (!this.embedId) {
+                Dispatcher.unsubscribe('PIP_SHOULD_UPDATE_CURRENT_TIME', this.shouldUpdateCurrentTime);
+            }
         }
 
         coverClick(_) {
@@ -244,7 +262,7 @@ module.exports = (Plugin, Library) => {
         }
 
         onCloseClick() {
-            grabYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+            captureYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
         }
 
         onDoubleClick() {
@@ -456,6 +474,7 @@ module.exports = (Plugin, Library) => {
         }
 
         onStop() {
+            BdApi.clearCSS('PiPEmbeds');
             Dispatcher.unsubscribe('MESSAGE_CREATE', this.messageCreate);
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.channelSelect);
             Dispatcher.unsubscribe('LOAD_MESSAGES_SUCCESS', this.channelSelect);
