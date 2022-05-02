@@ -4638,7 +4638,7 @@ var import_react_youtube = __toESM(require_YouTube());
         }
       });
       Patcher.after(Embed.default.prototype, "render", (that, args, ret) => {
-        if (!(that.props.embed.url && that.props.embed.url.includes("youtube.com"))) {
+        if (!(that.props.embed.url && (that.props.embed.url.includes("youtu.be") || that.props.embed.url.includes("youtube.com/watch")))) {
           return;
         }
         ret.props.children.props.children[6] = /* @__PURE__ */ React.createElement(YouTubeFrame, {

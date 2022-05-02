@@ -459,7 +459,7 @@ module.exports = (Plugin, Library) => {
             })
 
             Patcher.after(Embed.default.prototype, 'render', (that, args, ret) => {
-                if (!(that.props.embed.url && that.props.embed.url.includes('youtube.com'))) {
+                if (!(that.props.embed.url && (that.props.embed.url.includes('youtu.be') || that.props.embed.url.includes('youtube.com/watch')))) {
                     return;
                 }
 
