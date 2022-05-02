@@ -4236,17 +4236,22 @@ var import_react_youtube = __toESM(require_YouTube());
   const PiPWindow = WebpackModules.find((m) => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
   const Transitions = BdApi.findModuleByProps("transitionTo");
   const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
-  const Video = BdApi.findModuleByDisplayName("MediaPlayer");
+  const Video = BdApi.findModuleByDisplayName("Video");
+  const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
-  function registerYouTubePiP(videoId, volume, currentTime, messageId, channelId, guildId) {
-    Logger.log(videoId);
+  const crypto = require("crypto");
+  function getId(messageId, channelId, guildId, ref) {
+    return `E${guildId}:${channelId}:${messageId}:${crypto.createHash("sha256").update(ref).digest("base64")}`;
+  }
+  function registerPiP(ref, currentTime, volume, messageId, channelId, guildId) {
+    Logger.log(ref);
     Logger.log(currentTime);
     Logger.log(messageId);
     Logger.log(channelId);
-    const id = `E${guildId}:${channelId}:${messageId}`;
+    const id = getId(messageId, channelId, guildId, ref);
     pipRegistry.set(id, {
-      videoId,
+      ref,
       currentTime,
       volume
     });
@@ -4259,17 +4264,17 @@ var import_react_youtube = __toESM(require_YouTube());
       }
     });
   }
-  function hasPip(messageId, channelId, guildId) {
-    return pipRegistry.has(`E${guildId}:${channelId}:${messageId}`);
+  function hasPip(messageId, channelId, guildId, ref) {
+    return pipRegistry.has(getId(messageId, channelId, guildId, ref));
   }
-  function captureYouTubePiP(messageId, channelId, guildId, videoId) {
-    const id = `E${guildId}:${channelId}:${messageId}`;
+  function capturePiP(messageId, channelId, guildId, ref) {
+    const id = getId(messageId, channelId, guildId, ref);
     if (!pipRegistry.has(id)) {
       return null;
     }
     Dispatcher.dirtyDispatch({ type: "PIP_SHOULD_UPDATE_CURRENT_TIME" });
     const val = pipRegistry.get(id);
-    if (videoId !== val.videoId) {
+    if (ref !== val.ref) {
       return null;
     }
     pipRegistry.delete(id);
@@ -4282,7 +4287,8 @@ var import_react_youtube = __toESM(require_YouTube());
   let lastStartedVideo = null;
   function EmbedCapturePrompt(props) {
     return /* @__PURE__ */ React.createElement("div", {
-      className: "embedFrame"
+      className: "embedFrame",
+      style: { width: props.width ?? "400px", height: props.height ?? "225px" }
     }, /* @__PURE__ */ React.createElement("div", {
       className: "absoluteCenter verticalAlign"
     }, /* @__PURE__ */ React.createElement("svg", {
@@ -4292,17 +4298,48 @@ var import_react_youtube = __toESM(require_YouTube());
     }, /* @__PURE__ */ React.createElement("path", {
       d: "M22.3 25.85H39.05V13H22.3ZM7 40Q5.8 40 4.9 39.1Q4 38.2 4 37V11Q4 9.8 4.9 8.9Q5.8 8 7 8H41Q42.25 8 43.125 8.9Q44 9.8 44 11V37Q44 38.2 43.125 39.1Q42.25 40 41 40ZM7 37Q7 37 7 37Q7 37 7 37V11Q7 11 7 11Q7 11 7 11Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM7 37H41Q41 37 41 37Q41 37 41 37V11Q41 11 41 11Q41 11 41 11H7Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM25.3 22.85V16H36.05V22.85Z"
     })), /* @__PURE__ */ React.createElement("span", {
-      style: { "font-weight": "bold", "margin-bottom": "10px" }
+      style: { fontWeight: "bold", marginBottom: "10px", color: "var(--text-color)", textAlign: "center" }
     }, "Currently in PiP Mode"), React.createElement(ButtonData.default, {
       onClick: props.onCaptureRequest
     }, ["Exit PiP"])));
+  }
+  const MAX_WIDTH = 400, MAX_HEIGHT = 300;
+  function calculateAspectRatioFit(srcWidth, srcHeight) {
+    var ratio = Math.min(MAX_WIDTH / srcWidth, MAX_HEIGHT / srcHeight);
+    return { width: srcWidth * ratio, height: srcHeight * ratio };
+  }
+  class EmbedFrame extends React.Component {
+    constructor(props) {
+      super(props);
+      this.original = props.original;
+      const res = calculateAspectRatioFit(props.width, props.height);
+      this.width = res.width;
+      this.height = res.height;
+      this.onCaptureRequest = this.onCaptureRequest.bind(this);
+      this.state = {
+        showCapturePrompt: false
+      };
+    }
+    onCaptureRequest() {
+      Dispatcher.dirtyDispatch({
+        type: "PIP_DISCORD_EMBED_CAPTURE"
+      });
+      this.setState({ showCapturePrompt: false });
+    }
+    render() {
+      return this.state.showCapturePrompt ? /* @__PURE__ */ React.createElement(EmbedCapturePrompt, {
+        onCaptureRequest: this.onCaptureRequest,
+        width: this.width,
+        height: this.height
+      }) : this.original;
+    }
   }
   class YouTubeFrame extends React.Component {
     constructor(props) {
       super(props);
       this.embedId = props.embedId;
       let data = props.data;
-      this.videoId = data.videoId;
+      this.videoId = data.ref;
       let currentTime = data.currentTime;
       let volume = data.volume ?? 100;
       this.onPlayerReady = this.onPlayerReady.bind(this);
@@ -4331,7 +4368,7 @@ var import_react_youtube = __toESM(require_YouTube());
         guildId = obj.guildId;
       }
       let canGrab = false;
-      if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId)) {
+      if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId, this.videoId)) {
         canGrab = true;
       }
       this.state = {
@@ -4348,7 +4385,7 @@ var import_react_youtube = __toESM(require_YouTube());
       };
     }
     grabPlayer() {
-      let grabbed = captureYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+      let grabbed = capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
       if (grabbed) {
         this.setState({ currentTime: grabbed.currentTime, started: true, volume: grabbed.volume });
       }
@@ -4368,7 +4405,7 @@ var import_react_youtube = __toESM(require_YouTube());
       this.setState({ playerState: e.data });
       if (e.data === 1) {
         lastStartedVideo = {
-          videoId: this.videoId,
+          ref: this.videoId,
           messageId: this.state.messageId
         };
       }
@@ -4390,8 +4427,8 @@ var import_react_youtube = __toESM(require_YouTube());
       }
       const player = this.state.player.playerInfo;
       if (this.embedId) {
-        if (lastStartedVideo?.videoId === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
-          registerYouTubePiP(this.videoId, this.state.player.getCurrentTime(), this.state.player.getVolume(), this.state.messageId, this.state.channelId, this.state.guildId);
+        if (lastStartedVideo?.ref === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
+          registerPiP(this.videoId, this.state.player.getCurrentTime(), this.state.player.getVolume(), this.state.messageId, this.state.channelId, this.state.guildId);
           lastStartedVideo = null;
         }
       }
@@ -4410,13 +4447,13 @@ var import_react_youtube = __toESM(require_YouTube());
       }
     }
     shouldUpdateCurrentTime(_) {
-      const id = `E${this.state.guildId}:${this.state.channelId}:${this.state.messageId}`;
+      const id = getId(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
       let old = pipRegistry.get(id);
       old.currentTime = this.state.player.getCurrentTime();
       pipRegistry.set(id, old);
     }
     onPipClose(_) {
-      if (!hasPip(this.state.messageId, this.state.channelId, this.state.guildId)) {
+      if (!hasPip(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId)) {
         this.setState({ canGrab: false });
       }
     }
@@ -4436,7 +4473,7 @@ var import_react_youtube = __toESM(require_YouTube());
       }
     }
     onCloseClick() {
-      captureYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+      capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
     }
     onDoubleClick() {
       Transitions.transitionTo(`/channels/${this.state.guildId}/${this.state.channelId}/${this.state.messageId}`);
@@ -4606,7 +4643,7 @@ var import_react_youtube = __toESM(require_YouTube());
         }
         ret.props.children.props.children[6] = /* @__PURE__ */ React.createElement(YouTubeFrame, {
           embedId: that.props.embed.id,
-          data: { videoId: new URL(that.props.embed.url).searchParams.get("v") }
+          data: { ref: new URL(that.props.embed.url).searchParams.get("v") }
         });
       });
       this.messageCreate = (e) => {
@@ -4622,7 +4659,17 @@ var import_react_youtube = __toESM(require_YouTube());
       };
       Dispatcher.subscribe("CHANNEL_SELECT", this.channelSelect);
       Dispatcher.subscribe("LOAD_MESSAGES_SUCCESS", this.channelSelect);
-      Patcher.after(Video.prototype, "render", (that, args, ret) => {
+      Patcher.after(Video, "default", (that, args, ret) => {
+        Logger.log(that);
+        Logger.log(args);
+        Logger.log(ret);
+      });
+      Patcher.instead(AttachmentContent, "renderVideoComponent", (_, [arg], original) => {
+        return /* @__PURE__ */ React.createElement(EmbedFrame, {
+          original: original(arg),
+          width: arg.width,
+          height: arg.height
+        });
       });
       return;
       Patcher.after(Dispatcher, "dispatch", (_, [arg], ret) => {

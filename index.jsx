@@ -10,19 +10,25 @@ module.exports = (Plugin, Library) => {
     const PiPWindow = WebpackModules.find(m => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
     const Transitions = BdApi.findModuleByProps("transitionTo");
     const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
-    const Video = BdApi.findModuleByDisplayName("MediaPlayer");
+    const Video = BdApi.findModuleByDisplayName("Video");
+    const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
 
     const embedRegistry = new Map();
     const pipRegistry = new Map();
 
-    function registerYouTubePiP(videoId, volume, currentTime, messageId, channelId, guildId) {
-        Logger.log(videoId)
+    const crypto = require('crypto');
+    function getId(messageId, channelId, guildId, ref) {
+        return `E${guildId}:${channelId}:${messageId}:${crypto.createHash('sha256').update(ref).digest('base64')}`;
+    }
+
+    function registerPiP(ref, currentTime, volume, messageId, channelId, guildId) {
+        Logger.log(ref)
         Logger.log(currentTime)
         Logger.log(messageId)
         Logger.log(channelId)
-        const id = `E${guildId}:${channelId}:${messageId}`;
+        const id = getId(messageId, channelId, guildId, ref);
         pipRegistry.set(id, {
-            videoId: videoId,
+            ref: ref,
             currentTime: currentTime,
             volume: volume
         });
@@ -39,12 +45,12 @@ module.exports = (Plugin, Library) => {
         });
     }
 
-    function hasPip(messageId, channelId, guildId) {
-        return pipRegistry.has(`E${guildId}:${channelId}:${messageId}`)
+    function hasPip(messageId, channelId, guildId, ref) {
+        return pipRegistry.has(getId(messageId, channelId, guildId, ref))
     }
 
-    function captureYouTubePiP(messageId, channelId, guildId, videoId) {
-        const id = `E${guildId}:${channelId}:${messageId}`;
+    function capturePiP(messageId, channelId, guildId, ref) {
+        const id = getId(messageId, channelId, guildId, ref);
         if (!pipRegistry.has(id)) {
             return null;
         }
@@ -53,7 +59,7 @@ module.exports = (Plugin, Library) => {
         Dispatcher.dirtyDispatch({type: 'PIP_SHOULD_UPDATE_CURRENT_TIME'});
 
         const val = pipRegistry.get(id);
-        if (videoId !== val.videoId) {
+        if (ref !== val.ref) {
             return null;
         }
         pipRegistry.delete(id);
@@ -75,15 +81,50 @@ module.exports = (Plugin, Library) => {
     }*/
 
     function EmbedCapturePrompt(props) {
-        return <div className='embedFrame'>
+        return <div className='embedFrame' style={{width: props.width ?? '400px', height: props.height ?? '225px'}}>
             <div className='absoluteCenter verticalAlign'>
                 <svg height="48" width="48" style={{fill: "var(--blurple)"}}><path d="M22.3 25.85H39.05V13H22.3ZM7 40Q5.8 40 4.9 39.1Q4 38.2 4 37V11Q4 9.8 4.9 8.9Q5.8 8 7 8H41Q42.25 8 43.125 8.9Q44 9.8 44 11V37Q44 38.2 43.125 39.1Q42.25 40 41 40ZM7 37Q7 37 7 37Q7 37 7 37V11Q7 11 7 11Q7 11 7 11Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM7 37H41Q41 37 41 37Q41 37 41 37V11Q41 11 41 11Q41 11 41 11H7Q7 11 7 11Q7 11 7 11V37Q7 37 7 37Q7 37 7 37ZM25.3 22.85V16H36.05V22.85Z"/></svg>
-                <span style={{'font-weight': 'bold', 'margin-bottom': '10px'}}>Currently in PiP Mode</span>
+                <span style={{fontWeight: 'bold', marginBottom: '10px', color: 'var(--text-color)', textAlign: 'center'}}>Currently in PiP Mode</span>
                 {React.createElement(ButtonData.default, {
                     onClick: props.onCaptureRequest
                 }, ['Exit PiP'])}
             </div>
         </div>
+    }
+
+    const MAX_WIDTH = 400, MAX_HEIGHT = 300;
+    // Totally didn't rip this straight from SO
+    function calculateAspectRatioFit(srcWidth, srcHeight) {
+        var ratio = Math.min(MAX_WIDTH / srcWidth, MAX_HEIGHT / srcHeight);
+
+        return { width: srcWidth*ratio, height: srcHeight*ratio };
+    }
+
+    class EmbedFrame extends React.Component {
+        constructor(props) {
+            super(props);
+            this.original = props.original;
+            const res = calculateAspectRatioFit(props.width, props.height);
+            this.width = res.width;
+            this.height = res.height;
+
+            this.onCaptureRequest = this.onCaptureRequest.bind(this);
+
+            this.state = {
+                showCapturePrompt: false
+            };
+        }
+
+        onCaptureRequest() {
+            Dispatcher.dirtyDispatch({
+                type: 'PIP_DISCORD_EMBED_CAPTURE'
+            });
+            this.setState({showCapturePrompt: false});
+        }
+
+        render() {
+            return this.state.showCapturePrompt ? <EmbedCapturePrompt onCaptureRequest={this.onCaptureRequest} width={this.width} height={this.height}/> : this.original;
+        }
     }
 
     class YouTubeFrame extends React.Component {
@@ -94,7 +135,7 @@ module.exports = (Plugin, Library) => {
 
             let data = props.data;
 
-            this.videoId = data.videoId;
+            this.videoId = data.ref;
             let currentTime = data.currentTime;
             let volume = data.volume ?? 100;
 
@@ -132,7 +173,7 @@ module.exports = (Plugin, Library) => {
             }
 
             let canGrab = false;
-            if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId)) {
+            if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId, this.videoId)) {
                 // TODO: Setting to change auto-grab or no
                 canGrab = true;
             }
@@ -152,7 +193,7 @@ module.exports = (Plugin, Library) => {
         }
 
         grabPlayer() {
-            let grabbed = captureYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+            let grabbed = capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
             if (grabbed) {
                 this.setState({currentTime: grabbed.currentTime, started: true, volume: grabbed.volume});
             }
@@ -178,7 +219,7 @@ module.exports = (Plugin, Library) => {
             this.setState({playerState: e.data});
             if (e.data === 1) {
                 lastStartedVideo = {
-                    videoId: this.videoId,
+                    ref: this.videoId,
                     messageId: this.state.messageId
                 };
             }
@@ -206,8 +247,8 @@ module.exports = (Plugin, Library) => {
             const player = this.state.player.playerInfo;
             // If embedded, OPEN on all changes
             if (this.embedId) {
-                if (lastStartedVideo?.videoId === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
-                    registerYouTubePiP(this.videoId, this.state.player.getCurrentTime(), this.state.player.getVolume(), this.state.messageId, this.state.channelId, this.state.guildId);
+                if (lastStartedVideo?.ref === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
+                    registerPiP(this.videoId, this.state.player.getCurrentTime(), this.state.player.getVolume(), this.state.messageId, this.state.channelId, this.state.guildId);
 
                     lastStartedVideo = null;
                 }
@@ -231,14 +272,14 @@ module.exports = (Plugin, Library) => {
         }
 
         shouldUpdateCurrentTime(_) {
-            const id = `E${this.state.guildId}:${this.state.channelId}:${this.state.messageId}`;
+            const id = getId(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
             let old = pipRegistry.get(id);
             old.currentTime = this.state.player.getCurrentTime();
             pipRegistry.set(id, old);
         }
 
         onPipClose(_) {
-            if (!hasPip(this.state.messageId, this.state.channelId, this.state.guildId)) {
+            if (!hasPip(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId)) {
                 this.setState({canGrab: false});
             }
         }
@@ -262,7 +303,7 @@ module.exports = (Plugin, Library) => {
         }
 
         onCloseClick() {
-            captureYouTubePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
+            capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
         }
 
         onDoubleClick() {
@@ -423,7 +464,7 @@ module.exports = (Plugin, Library) => {
                 }
 
                 ret.props.children.props.children[6] = (
-                    <YouTubeFrame embedId={that.props.embed.id} data={{videoId: (new URL(that.props.embed.url)).searchParams.get('v')}}/>
+                    <YouTubeFrame embedId={that.props.embed.id} data={{ref: (new URL(that.props.embed.url)).searchParams.get('v')}}/>
                 )
             });
 
@@ -445,12 +486,12 @@ module.exports = (Plugin, Library) => {
             Dispatcher.subscribe('CHANNEL_SELECT', this.channelSelect);
             Dispatcher.subscribe('LOAD_MESSAGES_SUCCESS', this.channelSelect);
 
-            Patcher.after(Video.prototype, 'render', (that, args, ret) => {
-                /*Logger.log(that)
+            Patcher.after(Video, 'default', (that, args, ret) => {
+                Logger.log(that)
                 Logger.log(args)
                 Logger.log(ret)
 
-                const comp = ret.props.children;
+                /*const comp = ret.props.children;
 
                 ret.props.children = (
                     <DiscordVideoFrame>
@@ -461,6 +502,10 @@ module.exports = (Plugin, Library) => {
                 // ret = <DiscordVideoFrame that={that}/>
                 // ret = <video controls={false} playsInline={true} onClick={that.handleVideoClick} onEnded={that.handleEnded} onLoadedMetadata={that.handleLoaded} onProgress={that.handleBuffer} preload={that.state.preload} ref={that.mediaRef} src={that.props.src}/>
             })
+
+            Patcher.instead(AttachmentContent, 'renderVideoComponent', (_, [arg], original) => {
+                return <EmbedFrame original={original(arg)} width={arg.width} height={arg.height}/>
+            });
 
             return;
 
