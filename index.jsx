@@ -10,7 +10,7 @@ module.exports = (Plugin, Library) => {
     const PiPWindow = WebpackModules.find(m => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
     const Transitions = BdApi.findModuleByProps("transitionTo");
     const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
-    const Video = BdApi.findModuleByDisplayName("Video");
+    const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
     const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
 
     const embedRegistry = new Map();
@@ -100,7 +100,7 @@ module.exports = (Plugin, Library) => {
         return { width: srcWidth*ratio, height: srcHeight*ratio };
     }
 
-    class EmbedFrame extends React.Component {
+    class EmbedFrameOverlay extends React.Component {
         constructor(props) {
             super(props);
             this.original = props.original;
@@ -124,6 +124,18 @@ module.exports = (Plugin, Library) => {
 
         render() {
             return this.state.showCapturePrompt ? <EmbedCapturePrompt onCaptureRequest={this.onCaptureRequest} width={this.width} height={this.height}/> : this.original;
+        }
+    }
+
+    class EmbedFrameShim extends React.Component {
+        constructor(props) {
+            super(props);
+
+            this.original = props.original;
+        }
+
+        render() {
+            return this.original;
         }
     }
 
@@ -357,7 +369,7 @@ module.exports = (Plugin, Library) => {
         }
     }
 
-    return class PipEmbeds extends Plugin {
+    return class extends Plugin {
         onStart() {
             BdApi.injectCSS('PiPEmbeds', `
                 .fullFrame {
@@ -486,25 +498,30 @@ module.exports = (Plugin, Library) => {
             Dispatcher.subscribe('CHANNEL_SELECT', this.channelSelect);
             Dispatcher.subscribe('LOAD_MESSAGES_SUCCESS', this.channelSelect);
 
-            Patcher.after(Video, 'default', (that, args, ret) => {
+            /*Patcher.after(MediaPlayer.prototype, 'renderVideo', (that, args, ret) => {
                 Logger.log(that)
                 Logger.log(args)
                 Logger.log(ret)
+                Logger.log(ret.ref.current)
 
-                /*const comp = ret.props.children;
+                const comp = ret.props.children;
 
                 ret.props.children = (
                     <DiscordVideoFrame>
                         {comp}
                     </DiscordVideoFrame>
-                )*/
+                )
 
                 // ret = <DiscordVideoFrame that={that}/>
                 // ret = <video controls={false} playsInline={true} onClick={that.handleVideoClick} onEnded={that.handleEnded} onLoadedMetadata={that.handleLoaded} onProgress={that.handleBuffer} preload={that.state.preload} ref={that.mediaRef} src={that.props.src}/>
-            })
+            })*/
+
+            Patcher.instead(MediaPlayer.prototype, 'renderVideo', (_, args, original) => {
+                return <EmbedFrameShim original={original(...args)}/>
+            });
 
             Patcher.instead(AttachmentContent, 'renderVideoComponent', (_, [arg], original) => {
-                return <EmbedFrame original={original(arg)} width={arg.width} height={arg.height}/>
+                return <EmbedFrameOverlay original={original(arg)} width={arg.width} height={arg.height}/>
             });
 
             return;

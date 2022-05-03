@@ -1288,7 +1288,7 @@ var require_react_production_min = __commonJS({
     exports2.useTransition = function() {
       return U.current.useTransition();
     };
-    exports2.version = "18.0.0-fc46dba67-20220329";
+    exports2.version = "18.1.0";
   }
 });
 
@@ -1302,7 +1302,12 @@ var require_react_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var ReactVersion = "18.0.0-fc46dba67-20220329";
+        var ReactVersion = "18.1.0";
+        var enableScopeAPI = false;
+        var enableCacheElement = false;
+        var enableTransitionTracing = false;
+        var enableLegacyHidden = false;
+        var enableDebugTracing = false;
         var REACT_ELEMENT_TYPE = Symbol.for("react.element");
         var REACT_PORTAL_TYPE = Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -1368,11 +1373,6 @@ var require_react_development = __commonJS({
             return stack;
           };
         }
-        var enableScopeAPI = false;
-        var enableCacheElement = false;
-        var enableTransitionTracing = false;
-        var enableLegacyHidden = false;
-        var enableDebugTracing = false;
         var ReactSharedInternals = {
           ReactCurrentDispatcher,
           ReactCurrentBatchConfig,
@@ -2198,7 +2198,10 @@ var require_react_development = __commonJS({
           }
           return elementType;
         }
-        var REACT_MODULE_REFERENCE = Symbol.for("react.module.reference");
+        var REACT_MODULE_REFERENCE;
+        {
+          REACT_MODULE_REFERENCE = Symbol.for("react.module.reference");
+        }
         function isValidElementType(type) {
           if (typeof type === "string" || typeof type === "function") {
             return true;
@@ -4236,7 +4239,7 @@ var import_react_youtube = __toESM(require_YouTube());
   const PiPWindow = WebpackModules.find((m) => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
   const Transitions = BdApi.findModuleByProps("transitionTo");
   const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
-  const Video = BdApi.findModuleByDisplayName("Video");
+  const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
   const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
@@ -4308,7 +4311,7 @@ var import_react_youtube = __toESM(require_YouTube());
     var ratio = Math.min(MAX_WIDTH / srcWidth, MAX_HEIGHT / srcHeight);
     return { width: srcWidth * ratio, height: srcHeight * ratio };
   }
-  class EmbedFrame extends React.Component {
+  class EmbedFrameOverlay extends React.Component {
     constructor(props) {
       super(props);
       this.original = props.original;
@@ -4332,6 +4335,15 @@ var import_react_youtube = __toESM(require_YouTube());
         width: this.width,
         height: this.height
       }) : this.original;
+    }
+  }
+  class EmbedFrameShim extends React.Component {
+    constructor(props) {
+      super(props);
+      this.original = props.original;
+    }
+    render() {
+      return this.original;
     }
   }
   class YouTubeFrame extends React.Component {
@@ -4533,7 +4545,7 @@ var import_react_youtube = __toESM(require_YouTube());
       }, this.state.started || !this.embedId ? this.renderPlayer() : this.renderPreview());
     }
   }
-  return class PipEmbeds extends Plugin {
+  return class extends Plugin {
     onStart() {
       BdApi.injectCSS("PiPEmbeds", `
                 .fullFrame {
@@ -4659,13 +4671,13 @@ var import_react_youtube = __toESM(require_YouTube());
       };
       Dispatcher.subscribe("CHANNEL_SELECT", this.channelSelect);
       Dispatcher.subscribe("LOAD_MESSAGES_SUCCESS", this.channelSelect);
-      Patcher.after(Video, "default", (that, args, ret) => {
-        Logger.log(that);
-        Logger.log(args);
-        Logger.log(ret);
+      Patcher.instead(MediaPlayer.prototype, "renderVideo", (_, args, original) => {
+        return /* @__PURE__ */ React.createElement(EmbedFrameShim, {
+          original: original(...args)
+        });
       });
       Patcher.instead(AttachmentContent, "renderVideoComponent", (_, [arg], original) => {
-        return /* @__PURE__ */ React.createElement(EmbedFrame, {
+        return /* @__PURE__ */ React.createElement(EmbedFrameOverlay, {
           original: original(arg),
           width: arg.width,
           height: arg.height
