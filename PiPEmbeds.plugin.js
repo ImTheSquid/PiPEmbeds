@@ -4241,6 +4241,7 @@ var import_react_youtube = __toESM(require_YouTube());
   const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
   const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
   const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
+  const MessageAccessories = BdApi.findModuleByProps("MessageAccessories").MessageAccessories;
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
   const crypto = require("crypto");
@@ -4248,10 +4249,6 @@ var import_react_youtube = __toESM(require_YouTube());
     return `E${guildId}:${channelId}:${messageId}:${crypto.createHash("sha256").update(ref).digest("base64")}`;
   }
   function registerPiP(ref, currentTime, volume, messageId, channelId, guildId) {
-    Logger.log(ref);
-    Logger.log(currentTime);
-    Logger.log(messageId);
-    Logger.log(channelId);
     const id = getId(messageId, channelId, guildId, ref);
     pipRegistry.set(id, {
       ref,
@@ -4306,10 +4303,58 @@ var import_react_youtube = __toESM(require_YouTube());
       onClick: props.onCaptureRequest
     }, ["Exit PiP"])));
   }
+  function PiPControls(props) {
+    return /* @__PURE__ */ React.createElement("div", {
+      onDoubleClick: props.onDoubleClick,
+      style: { width: "inherit", height: "inherit" }
+    }, !this.embedId && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", {
+      className: "playerUi",
+      onClick: props.onClick
+    }, /* @__PURE__ */ React.createElement("button", {
+      onClick: props.onCloseClick,
+      className: "closeWrapper"
+    }, "CLOSE"))), props.children);
+  }
   const MAX_WIDTH = 400, MAX_HEIGHT = 300;
   function calculateAspectRatioFit(srcWidth, srcHeight) {
     var ratio = Math.min(MAX_WIDTH / srcWidth, MAX_HEIGHT / srcHeight);
     return { width: srcWidth * ratio, height: srcHeight * ratio };
+  }
+  class DiscordEmbedPiP extends React.Component {
+    constructor(props) {
+      super(props);
+      this.onClick = this.onClick.bind(this);
+      this.ref = React.createRef();
+      this.src = props.data.ref;
+      this.currentTime = props.data.currentTime;
+      this.volume = props.data.volume;
+      this.messageId = props.messageId;
+      this.channelId = props.channelId;
+      this.guildId = props.guildId;
+    }
+    componentDidMount() {
+      this.ref.current.currentTime = this.currentTime;
+      this.ref.current.volume = this.volume;
+    }
+    onClick() {
+      if (this.ref.current.paused) {
+        this.ref.current.play();
+      } else {
+        this.ref.current.pause();
+      }
+    }
+    render() {
+      return /* @__PURE__ */ React.createElement(PiPControls, {
+        onDoubleClick: () => Transitions.transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`),
+        onClick: this.onClick,
+        onCloseClick: () => capturePiP(this.messageId, this.channelId, this.guildId, this.src)
+      }, /* @__PURE__ */ React.createElement("video", {
+        src: this.src,
+        autoPlay: true,
+        ref: this.ref,
+        style: { width: "inherit", height: "inherit" }
+      }));
+    }
   }
   class EmbedFrameOverlay extends React.Component {
     constructor(props) {
@@ -4341,6 +4386,54 @@ var import_react_youtube = __toESM(require_YouTube());
     constructor(props) {
       super(props);
       this.original = props.original;
+      this.that = props.that;
+      const url = new URL(this.that.props.src);
+      this.id = url.searchParams.get("pipembedsid");
+      this.onChannelSelect = this.onChannelSelect.bind(this);
+      this.onEmbedId = this.onEmbedId.bind(this);
+      Dispatcher.subscribe("CHANNEL_SELECT", this.onChannelSelect);
+      Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
+      let messageId = null;
+      let channelId = null;
+      let guildId = null;
+      if (embedRegistry.has(this.id)) {
+        const obj = embedRegistry.get(this.id);
+        messageId = obj.messageId;
+        channelId = obj.channelId;
+        guildId = obj.guildId;
+      }
+      this.state = {
+        messageId,
+        channelId,
+        guildId
+      };
+    }
+    onChannelSelect(_) {
+      const video = this.that.mediaRef.current;
+      if (video.paused || video.ended)
+        return;
+      if (!this.state.channelId || !this.state.messageId || !this.state.guildId) {
+        Logger.err("No info for PiP!");
+        return;
+      }
+      registerPiP(video.src, video.currentTime, video.volume, this.state.messageId, this.state.channelId, this.state.guildId);
+    }
+    onEmbedId(e) {
+      if (this.state.messageId) {
+        return;
+      }
+      if (e.added.has(this.id)) {
+        const obj = e.added.get(this.id);
+        this.setState({
+          messageId: obj.messageId,
+          channelId: obj.channelId,
+          guildId: obj.guildId
+        });
+      }
+    }
+    componentWillUnmount() {
+      Dispatcher.unsubscribe("CHANNEL_SELECT", this.onChannelSelect);
+      Dispatcher.unsubscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
     }
     render() {
       return this.original;
@@ -4433,11 +4526,11 @@ var import_react_youtube = __toESM(require_YouTube());
       }
       if (!this.state.channelId || !this.state.messageId || !this.state.guildId) {
         Logger.err("No info for PiP!");
+        return;
       }
       if (this.state.playerState !== 1) {
         return;
       }
-      const player = this.state.player.playerInfo;
       if (this.embedId) {
         if (lastStartedVideo?.ref === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
           registerPiP(this.videoId, this.state.player.getCurrentTime(), this.state.player.getVolume(), this.state.messageId, this.state.channelId, this.state.guildId);
@@ -4497,30 +4590,28 @@ var import_react_youtube = __toESM(require_YouTube());
           autoplay: 1
         }
       };
-      return /* @__PURE__ */ React.createElement("div", {
-        onDoubleClick: this.onDoubleClick
-      }, !this.embedId && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", {
-        className: "playerUi",
-        onClick: this.coverClick
-      }, /* @__PURE__ */ React.createElement("button", {
-        onClick: this.onCloseClick,
-        className: "closeWrapper"
-      }, "CLOSE"))), /* @__PURE__ */ React.createElement(import_react_youtube.default, {
+      const player = /* @__PURE__ */ React.createElement(import_react_youtube.default, {
         videoId: this.videoId,
         onReady: this.onPlayerReady,
         className: !!this.embedId ? "youtubeEmbed" : "youtubePiP",
         onError: this.onPlayerError,
         onStateChange: this.onPlayerState,
         opts
-      }));
+      });
+      return this.embedId ? player : /* @__PURE__ */ React.createElement(PiPControls, {
+        onClick: this.coverClick,
+        onDoubleClick: this.onDoubleClick,
+        onCloseClick: this.onCloseClick
+      }, player);
     }
     renderVideoPreview() {
       return /* @__PURE__ */ React.createElement("div", {
         className: "embedFrame"
       }, /* @__PURE__ */ React.createElement("img", {
-        src: `https://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg`,
+        src: `https://img.youtube.com/vi/${this.videoId}/mqdefault.jpg`,
         className: "embedThumbnail",
-        onClick: () => this.setState({ started: true })
+        onClick: () => this.setState({ started: true }),
+        style: { maxWidth: "100%", maxHeight: "100%" }
       }), React.createElement(VideoPlayPill, {
         externalURL: `https://youtube.com/watch?v=${this.videoId}`,
         onPlay: () => {
@@ -4637,16 +4728,29 @@ var import_react_youtube = __toESM(require_YouTube());
         if (pipRegistry.has(that.props.id)) {
           const data = pipRegistry.get(that.props.id);
           const [guildId, channelId, messageId] = that.props.id.split(":");
-          ret.props.children.props.children = [
-            /* @__PURE__ */ React.createElement("div", {
-              style: { width: "320px", height: "180px" }
-            }, /* @__PURE__ */ React.createElement(YouTubeFrame, {
-              data,
-              messageId,
-              channelId,
-              guildId: guildId.substring(1)
-            }))
-          ];
+          if (data.ref.includes("discord")) {
+            ret.props.children.props.children = [
+              /* @__PURE__ */ React.createElement("div", {
+                style: { width: "320px", height: "180px" }
+              }, /* @__PURE__ */ React.createElement(DiscordEmbedPiP, {
+                data,
+                messageId,
+                channelId,
+                guildId: guildId.substring(1)
+              }))
+            ];
+          } else {
+            ret.props.children.props.children = [
+              /* @__PURE__ */ React.createElement("div", {
+                style: { width: "320px", height: "180px" }
+              }, /* @__PURE__ */ React.createElement(YouTubeFrame, {
+                data,
+                messageId,
+                channelId,
+                guildId: guildId.substring(1)
+              }))
+            ];
+          }
         }
       });
       Patcher.after(Embed.default.prototype, "render", (that, args, ret) => {
@@ -4671,9 +4775,10 @@ var import_react_youtube = __toESM(require_YouTube());
       };
       Dispatcher.subscribe("CHANNEL_SELECT", this.channelSelect);
       Dispatcher.subscribe("LOAD_MESSAGES_SUCCESS", this.channelSelect);
-      Patcher.instead(MediaPlayer.prototype, "renderVideo", (_, args, original) => {
+      Patcher.instead(MediaPlayer.prototype, "renderVideo", (that, args, original) => {
         return /* @__PURE__ */ React.createElement(EmbedFrameShim, {
-          original: original(...args)
+          original: original(...args),
+          that
         });
       });
       Patcher.instead(AttachmentContent, "renderVideoComponent", (_, [arg], original) => {
@@ -4683,9 +4788,33 @@ var import_react_youtube = __toESM(require_YouTube());
           height: arg.height
         });
       });
-      return;
-      Patcher.after(Dispatcher, "dispatch", (_, [arg], ret) => {
-        Logger.log(arg);
+      Patcher.after(MessageAccessories.prototype, "renderAttachments", (that, [arg], ret) => {
+        if (!ret)
+          return;
+        for (const child of ret) {
+          if (child.props.children.props.attachment) {
+            const url = new URL(child.props.children.props.attachment.url);
+            url.searchParams.set("pipembedsid", child.props.children.props.attachment.id);
+            child.props.children.props.attachment.url = url.toString();
+          } else if (child.props.children.props.attachmentData) {
+            const url = new URL(child.props.children.props.attachmentData.url);
+            url.searchParams.set("pipembedsid", child.props.children.props.attachmentData.id);
+            child.props.children.props.attachmentData.url = url.toString();
+          }
+        }
+      });
+      Patcher.after(MessageAccessories.prototype, "renderEmbeds", (_, __, ret) => {
+        if (!ret)
+          return;
+        for (const child of ret) {
+          if (!child.props.children.props.embed || child.props.children.props.embed.type != "video")
+            continue;
+          const url = new URL(child.props.children.props.embed.url);
+          url.searchParams.set("pipembedsid", child.props.children.props.embed.id);
+          child.props.children.props.embed.url = url.toString();
+          child.props.children.props.embed.video.url = url.toString();
+          child.props.children.props.embed.video.proxyURL = url.toString();
+        }
       });
     }
     onStop() {
@@ -4705,11 +4834,13 @@ var import_react_youtube = __toESM(require_YouTube());
           channelId,
           guildId: SelectedGuildStore.getGuildId()
         };
-        if (message.embeds.length > 0) {
-          for (const embed of message.embeds) {
-            embedRegistry.set(embed.id, messageInfo);
-            addedEmbeds.set(embed.id, messageInfo);
-          }
+        for (const attachment of message.attachments) {
+          embedRegistry.set(attachment.id, messageInfo);
+          addedEmbeds.set(attachment.id, messageInfo);
+        }
+        for (const embed of message.embeds) {
+          embedRegistry.set(embed.id, messageInfo);
+          addedEmbeds.set(embed.id, messageInfo);
         }
       }
       Dispatcher.dirtyDispatch({

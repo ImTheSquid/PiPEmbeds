@@ -12,6 +12,7 @@ module.exports = (Plugin, Library) => {
     const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
     const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
     const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
+    const MessageAccessories = BdApi.findModuleByProps("MessageAccessories").MessageAccessories;
 
     const embedRegistry = new Map();
     const pipRegistry = new Map();
@@ -22,18 +23,12 @@ module.exports = (Plugin, Library) => {
     }
 
     function registerPiP(ref, currentTime, volume, messageId, channelId, guildId) {
-        Logger.log(ref)
-        Logger.log(currentTime)
-        Logger.log(messageId)
-        Logger.log(channelId)
         const id = getId(messageId, channelId, guildId, ref);
         pipRegistry.set(id, {
             ref: ref,
             currentTime: currentTime,
             volume: volume
         });
-
-        // channel.name = id;
 
         Dispatcher.dirtyDispatch({
             type: 'PICTURE_IN_PICTURE_OPEN',
@@ -92,12 +87,61 @@ module.exports = (Plugin, Library) => {
         </div>
     }
 
+    function PiPControls(props) {
+        // Style tag is only needed for Discord embeds because the video element is weird
+        return <div onDoubleClick={props.onDoubleClick} style={{width: 'inherit', height: 'inherit'}}>
+            {!this.embedId && <div>
+                <div className='playerUi' onClick={props.onClick}>
+                    <button onClick={props.onCloseClick} className='closeWrapper'>
+                        CLOSE
+                    </button>
+                </div>
+            </div>}
+            {props.children}
+        </div>
+    }
+
     const MAX_WIDTH = 400, MAX_HEIGHT = 300;
     // Totally didn't rip this straight from SO
     function calculateAspectRatioFit(srcWidth, srcHeight) {
         var ratio = Math.min(MAX_WIDTH / srcWidth, MAX_HEIGHT / srcHeight);
 
         return { width: srcWidth*ratio, height: srcHeight*ratio };
+    }
+
+    class DiscordEmbedPiP extends React.Component {
+        constructor(props) {
+            super(props);
+
+            this.onClick = this.onClick.bind(this);
+            this.ref = React.createRef();
+
+            this.src = props.data.ref;
+            this.currentTime = props.data.currentTime;
+            this.volume = props.data.volume;
+            this.messageId = props.messageId;
+            this.channelId = props.channelId;
+            this.guildId = props.guildId;
+        }
+
+        componentDidMount() {
+            this.ref.current.currentTime = this.currentTime;
+            this.ref.current.volume = this.volume;
+        }
+
+        onClick() {
+            if (this.ref.current.paused) {
+                this.ref.current.play();
+            } else {
+                this.ref.current.pause();
+            }
+        }
+
+        render() {
+            return <PiPControls onDoubleClick={() => Transitions.transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`)} onClick={this.onClick} onCloseClick={() => capturePiP(this.messageId, this.channelId, this.guildId, this.src)}>
+                <video src={this.src} autoPlay ref={this.ref} style={{width: 'inherit', height: 'inherit'}}/>
+            </PiPControls>
+        }
     }
 
     class EmbedFrameOverlay extends React.Component {
@@ -132,6 +176,64 @@ module.exports = (Plugin, Library) => {
             super(props);
 
             this.original = props.original;
+            this.that = props.that;
+            const url = new URL(this.that.props.src);
+            this.id = url.searchParams.get('pipembedsid');
+
+            this.onChannelSelect = this.onChannelSelect.bind(this);
+            this.onEmbedId = this.onEmbedId.bind(this);
+
+            Dispatcher.subscribe('CHANNEL_SELECT', this.onChannelSelect);
+            Dispatcher.subscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+
+            let messageId = null;
+            let channelId = null;
+            let guildId = null;
+            if (embedRegistry.has(this.id)) {
+                const obj = embedRegistry.get(this.id);
+                messageId = obj.messageId;
+                channelId = obj.channelId;
+                guildId = obj.guildId;
+            }
+
+            this.state = {
+                messageId: messageId,
+                channelId: channelId,
+                guildId: guildId
+            };
+        }
+
+        onChannelSelect(_) {
+            const video = this.that.mediaRef.current;
+            if (video.paused || video.ended) return;
+
+            // At this point the video should be sent to the PiP window
+            if (!this.state.channelId || !this.state.messageId || !this.state.guildId) {
+                Logger.err('No info for PiP!');
+                return;
+            }
+
+            registerPiP(video.src, video.currentTime, video.volume, this.state.messageId, this.state.channelId, this.state.guildId);
+        }
+
+        onEmbedId(e) {
+            if (this.state.messageId) {
+                return;
+            }
+
+            if (e.added.has(this.id)) {
+                const obj = e.added.get(this.id);
+                this.setState({
+                    messageId: obj.messageId,
+                    channelId: obj.channelId,
+                    guildId: obj.guildId
+                });
+            }
+        }
+
+        componentWillUnmount() {
+            Dispatcher.unsubscribe('CHANNEL_SELECT', this.onChannelSelect);
+            Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
         }
 
         render() {
@@ -249,6 +351,7 @@ module.exports = (Plugin, Library) => {
 
             if (!this.state.channelId || !this.state.messageId || !this.state.guildId) {
                 Logger.err('No info for PiP!');
+                return;
             }
 
             // Don't do anything if not playing
@@ -256,7 +359,6 @@ module.exports = (Plugin, Library) => {
                 return;
             }
 
-            const player = this.state.player.playerInfo;
             // If embedded, OPEN on all changes
             if (this.embedId) {
                 if (lastStartedVideo?.ref === this.videoId && lastStartedVideo?.messageId === this.state.messageId) {
@@ -301,6 +403,7 @@ module.exports = (Plugin, Library) => {
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.onChannelSelect);
             Dispatcher.unsubscribe('PICTURE_IN_PICTURE_CLOSE', this.onPipClose);
 
+            // If this is a PiP component, unsubscribe from PiP-specific events
             if (!this.embedId) {
                 Dispatcher.unsubscribe('PIP_SHOULD_UPDATE_CURRENT_TIME', this.shouldUpdateCurrentTime);
             }
@@ -330,21 +433,16 @@ module.exports = (Plugin, Library) => {
                 }
             }
 
-            return <div onDoubleClick={this.onDoubleClick}>
-                {!this.embedId && <div>
-                    <div className='playerUi' onClick={this.coverClick}>
-                        <button onClick={this.onCloseClick} className='closeWrapper'>
-                            CLOSE
-                        </button>
-                    </div>
-                </div>}
-                <YouTube videoId={this.videoId} onReady={this.onPlayerReady} className={!!this.embedId ? "youtubeEmbed" : "youtubePiP"} onError={this.onPlayerError} onStateChange={this.onPlayerState} opts={opts}/>
-            </div>
+            const player = <YouTube videoId={this.videoId} onReady={this.onPlayerReady} className={!!this.embedId ? "youtubeEmbed" : "youtubePiP"} onError={this.onPlayerError} onStateChange={this.onPlayerState} opts={opts}/>
+
+            return this.embedId ? player : <PiPControls onClick={this.coverClick} onDoubleClick={this.onDoubleClick} onCloseClick={this.onCloseClick}>
+                {player}
+            </PiPControls>
         }
 
         renderVideoPreview() {
             return <div className='embedFrame'>
-                <img src={`https://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg`} className='embedThumbnail' onClick={() => this.setState({started: true})}/>
+                <img src={`https://img.youtube.com/vi/${this.videoId}/mqdefault.jpg`} className='embedThumbnail' onClick={() => this.setState({started: true})} style={{maxWidth: '100%', maxHeight:'100%'}}/>
                 {React.createElement(VideoPlayPill, {
                     externalURL: `https://youtube.com/watch?v=${this.videoId}`,
                     onPlay: () => {
@@ -365,7 +463,7 @@ module.exports = (Plugin, Library) => {
         render() {
             return <div className={this.embedId ? 'embedMargin' : ''}>
                 {this.state.started || !this.embedId ? this.renderPlayer() : this.renderPreview()}
-            </div>;
+            </div>
         }
     }
 
@@ -462,13 +560,22 @@ module.exports = (Plugin, Library) => {
                 if (pipRegistry.has(that.props.id)) {
                     const data = pipRegistry.get(that.props.id);
                     const [guildId, channelId, messageId] = that.props.id.split(':');
-                    ret.props.children.props.children = [
-                        <div style={{width: '320px', height: '180px'}}>
-                            <YouTubeFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
-                        </div>
-                    ]
+
+                    if (data.ref.includes('discord')) {
+                        ret.props.children.props.children = [
+                            <div style={{width: '320px', height: '180px'}}>
+                                <DiscordEmbedPiP data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
+                            </div>
+                        ]
+                    } else {
+                        ret.props.children.props.children = [
+                            <div style={{width: '320px', height: '180px'}}>
+                                <YouTubeFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
+                            </div>
+                        ]
+                    }
                 }
-            })
+            });
 
             Patcher.after(Embed.default.prototype, 'render', (that, args, ret) => {
                 if (!(that.props.embed.url && (that.props.embed.url.includes('youtu.be') || that.props.embed.url.includes('youtube.com/watch')))) {
@@ -486,53 +593,55 @@ module.exports = (Plugin, Library) => {
                 }
 
                 this.forceUpdateEmbedIds(e.message);
-            }
+            };
 
             Dispatcher.subscribe('MESSAGE_CREATE', this.messageCreate);
 
             this.channelSelect = _ => {
                 embedRegistry.clear();
                 this.forceUpdateEmbedIds(null);
-            }
+            };
 
             Dispatcher.subscribe('CHANNEL_SELECT', this.channelSelect);
             Dispatcher.subscribe('LOAD_MESSAGES_SUCCESS', this.channelSelect);
 
-            /*Patcher.after(MediaPlayer.prototype, 'renderVideo', (that, args, ret) => {
-                Logger.log(that)
-                Logger.log(args)
-                Logger.log(ret)
-                Logger.log(ret.ref.current)
-
-                const comp = ret.props.children;
-
-                ret.props.children = (
-                    <DiscordVideoFrame>
-                        {comp}
-                    </DiscordVideoFrame>
-                )
-
-                // ret = <DiscordVideoFrame that={that}/>
-                // ret = <video controls={false} playsInline={true} onClick={that.handleVideoClick} onEnded={that.handleEnded} onLoadedMetadata={that.handleLoaded} onProgress={that.handleBuffer} preload={that.state.preload} ref={that.mediaRef} src={that.props.src}/>
-            })*/
-
-            Patcher.instead(MediaPlayer.prototype, 'renderVideo', (_, args, original) => {
-                return <EmbedFrameShim original={original(...args)}/>
+            Patcher.instead(MediaPlayer.prototype, 'renderVideo', (that, args, original) => {
+                return <EmbedFrameShim original={original(...args)} that={that}/>
             });
 
             Patcher.instead(AttachmentContent, 'renderVideoComponent', (_, [arg], original) => {
                 return <EmbedFrameOverlay original={original(arg)} width={arg.width} height={arg.height}/>
             });
 
-            return;
+            Patcher.after(MessageAccessories.prototype, 'renderAttachments', (that, [arg], ret) => {
+                if (!ret) return;
 
-            Patcher.after(Dispatcher, 'dispatch', (_, [arg], ret) => {
-                /*if (!arg.type.includes('PICTURE_IN_PICTURE')) {
-                    return;
-                }*/
-                //Logger.log("PiP Dispatch")
-                Logger.log(arg)
-            })
+                for (const child of ret) {
+                    if (child.props.children.props.attachment) {
+                        const url = new URL(child.props.children.props.attachment.url);
+                        url.searchParams.set('pipembedsid', child.props.children.props.attachment.id);
+                        child.props.children.props.attachment.url = url.toString();
+                    } else if (child.props.children.props.attachmentData) {
+                        const url = new URL(child.props.children.props.attachmentData.url);
+                        url.searchParams.set('pipembedsid', child.props.children.props.attachmentData.id);
+                        child.props.children.props.attachmentData.url = url.toString();
+                    }
+                }
+            });
+
+            Patcher.after(MessageAccessories.prototype, 'renderEmbeds', (_, __, ret) => {
+                if (!ret) return;
+
+                for (const child of ret) {
+                    if (!child.props.children.props.embed || child.props.children.props.embed.type != 'video') continue;
+
+                    const url = new URL(child.props.children.props.embed.url);
+                    url.searchParams.set('pipembedsid', child.props.children.props.embed.id);
+                    child.props.children.props.embed.url = url.toString();
+                    child.props.children.props.embed.video.url = url.toString();
+                    child.props.children.props.embed.video.proxyURL = url.toString();
+                }
+            });
         }
 
         onStop() {
@@ -555,11 +664,14 @@ module.exports = (Plugin, Library) => {
                     guildId: SelectedGuildStore.getGuildId()
                 };
 
-                if (message.embeds.length > 0) {
-                    for (const embed of message.embeds) {
-                        embedRegistry.set(embed.id, messageInfo);
-                        addedEmbeds.set(embed.id, messageInfo);
-                    }
+                for (const attachment of message.attachments) {
+                    embedRegistry.set(attachment.id, messageInfo);
+                    addedEmbeds.set(attachment.id, messageInfo);
+                }
+
+                for (const embed of message.embeds) {
+                    embedRegistry.set(embed.id, messageInfo);
+                    addedEmbeds.set(embed.id, messageInfo);
                 }
             }
 
