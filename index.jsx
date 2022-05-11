@@ -101,10 +101,9 @@ module.exports = (Plugin, Library) => {
         </div>
     }
 
-    const MAX_WIDTH = 400, MAX_HEIGHT = 300;
     // Totally didn't rip this straight from SO
-    function calculateAspectRatioFit(srcWidth, srcHeight) {
-        var ratio = Math.min(MAX_WIDTH / srcWidth, MAX_HEIGHT / srcHeight);
+    function calculateAspectRatioFit(srcWidth, srcHeight, maxWidth, maxHeight) {
+        var ratio = Math.min(maxWidth / srcWidth, maxHeight / srcHeight);
 
         return { width: srcWidth*ratio, height: srcHeight*ratio };
     }
@@ -122,9 +121,19 @@ module.exports = (Plugin, Library) => {
             this.messageId = props.messageId;
             this.channelId = props.channelId;
             this.guildId = props.guildId;
+
+            this.state = {
+                width: null,
+                height: null
+            };
         }
 
         componentDidMount() {
+            this.ref.current.onloadedmetadata = e => {
+                const { width, height } = calculateAspectRatioFit(e.target.videoWidth, e.target.videoHeight, 320, 180);
+                this.setState({width: width, height: height});
+            };
+
             this.ref.current.currentTime = this.currentTime;
             this.ref.current.volume = this.volume;
         }
@@ -139,7 +148,7 @@ module.exports = (Plugin, Library) => {
 
         render() {
             return <PiPControls onDoubleClick={() => Transitions.transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`)} onClick={this.onClick} onCloseClick={() => capturePiP(this.messageId, this.channelId, this.guildId, this.src)}>
-                <video src={this.src} autoPlay ref={this.ref} style={{width: 'inherit', height: 'inherit'}}/>
+                <video src={this.src} autoPlay ref={this.ref} style={this.state.width ? {width: this.state.width, height: this.state.height} : {}}/>
             </PiPControls>
         }
     }
@@ -148,7 +157,8 @@ module.exports = (Plugin, Library) => {
         constructor(props) {
             super(props);
             this.original = props.original;
-            const res = calculateAspectRatioFit(props.width, props.height);
+            const MAX_WIDTH = 400, MAX_HEIGHT = 300;
+            const res = calculateAspectRatioFit(props.width, props.height, MAX_WIDTH, MAX_HEIGHT);
             this.width = res.width;
             this.height = res.height;
 
@@ -461,7 +471,7 @@ module.exports = (Plugin, Library) => {
         }
 
         render() {
-            return <div className={this.embedId ? 'embedMargin' : ''}>
+            return <div className={this.embedId ? 'embedMargin' : ''} style={this.embedId ? {} : {width: '320px', height: '180px'}}>
                 {this.state.started || !this.embedId ? this.renderPlayer() : this.renderPreview()}
             </div>
         }
@@ -563,15 +573,11 @@ module.exports = (Plugin, Library) => {
 
                     if (data.ref.includes('discord')) {
                         ret.props.children.props.children = [
-                            <div style={{width: '320px', height: '180px'}}>
-                                <DiscordEmbedPiP data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
-                            </div>
+                            <DiscordEmbedPiP data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
                         ]
                     } else {
                         ret.props.children.props.children = [
-                            <div style={{width: '320px', height: '180px'}}>
-                                <YouTubeFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
-                            </div>
+                            <YouTubeFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
                         ]
                     }
                 }

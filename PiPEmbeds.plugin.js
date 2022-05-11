@@ -4315,9 +4315,8 @@ var import_react_youtube = __toESM(require_YouTube());
       className: "closeWrapper"
     }, "CLOSE"))), props.children);
   }
-  const MAX_WIDTH = 400, MAX_HEIGHT = 300;
-  function calculateAspectRatioFit(srcWidth, srcHeight) {
-    var ratio = Math.min(MAX_WIDTH / srcWidth, MAX_HEIGHT / srcHeight);
+  function calculateAspectRatioFit(srcWidth, srcHeight, maxWidth, maxHeight) {
+    var ratio = Math.min(maxWidth / srcWidth, maxHeight / srcHeight);
     return { width: srcWidth * ratio, height: srcHeight * ratio };
   }
   class DiscordEmbedPiP extends React.Component {
@@ -4331,8 +4330,16 @@ var import_react_youtube = __toESM(require_YouTube());
       this.messageId = props.messageId;
       this.channelId = props.channelId;
       this.guildId = props.guildId;
+      this.state = {
+        width: null,
+        height: null
+      };
     }
     componentDidMount() {
+      this.ref.current.onloadedmetadata = (e) => {
+        const { width, height } = calculateAspectRatioFit(e.target.videoWidth, e.target.videoHeight, 320, 180);
+        this.setState({ width, height });
+      };
       this.ref.current.currentTime = this.currentTime;
       this.ref.current.volume = this.volume;
     }
@@ -4352,7 +4359,7 @@ var import_react_youtube = __toESM(require_YouTube());
         src: this.src,
         autoPlay: true,
         ref: this.ref,
-        style: { width: "inherit", height: "inherit" }
+        style: this.state.width ? { width: this.state.width, height: this.state.height } : {}
       }));
     }
   }
@@ -4360,7 +4367,8 @@ var import_react_youtube = __toESM(require_YouTube());
     constructor(props) {
       super(props);
       this.original = props.original;
-      const res = calculateAspectRatioFit(props.width, props.height);
+      const MAX_WIDTH = 400, MAX_HEIGHT = 300;
+      const res = calculateAspectRatioFit(props.width, props.height, MAX_WIDTH, MAX_HEIGHT);
       this.width = res.width;
       this.height = res.height;
       this.onCaptureRequest = this.onCaptureRequest.bind(this);
@@ -4632,7 +4640,8 @@ var import_react_youtube = __toESM(require_YouTube());
     }
     render() {
       return /* @__PURE__ */ React.createElement("div", {
-        className: this.embedId ? "embedMargin" : ""
+        className: this.embedId ? "embedMargin" : "",
+        style: this.embedId ? {} : { width: "320px", height: "180px" }
       }, this.state.started || !this.embedId ? this.renderPlayer() : this.renderPreview());
     }
   }
@@ -4730,25 +4739,21 @@ var import_react_youtube = __toESM(require_YouTube());
           const [guildId, channelId, messageId] = that.props.id.split(":");
           if (data.ref.includes("discord")) {
             ret.props.children.props.children = [
-              /* @__PURE__ */ React.createElement("div", {
-                style: { width: "320px", height: "180px" }
-              }, /* @__PURE__ */ React.createElement(DiscordEmbedPiP, {
+              /* @__PURE__ */ React.createElement(DiscordEmbedPiP, {
                 data,
                 messageId,
                 channelId,
                 guildId: guildId.substring(1)
-              }))
+              })
             ];
           } else {
             ret.props.children.props.children = [
-              /* @__PURE__ */ React.createElement("div", {
-                style: { width: "320px", height: "180px" }
-              }, /* @__PURE__ */ React.createElement(YouTubeFrame, {
+              /* @__PURE__ */ React.createElement(YouTubeFrame, {
                 data,
                 messageId,
                 channelId,
                 guildId: guildId.substring(1)
-              }))
+              })
             ];
           }
         }
