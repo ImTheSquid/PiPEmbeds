@@ -4245,11 +4245,11 @@ var import_react_youtube = __toESM(require_YouTube());
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
   const crypto = require("crypto");
-  function getId(messageId, channelId, guildId, ref) {
-    return `E${guildId}:${channelId}:${messageId}:${crypto.createHash("sha256").update(ref).digest("base64")}`;
+  function getId(messageId2, channelId2, guildId2, ref) {
+    return `E${guildId2}:${channelId2}:${messageId2}:${crypto.createHash("sha256").update(ref).digest("base64")}`;
   }
-  function registerPiP(ref, currentTime, volume, messageId, channelId, guildId) {
-    const id = getId(messageId, channelId, guildId, ref);
+  function registerPiP(ref, currentTime, volume, messageId2, channelId2, guildId2) {
+    const id = getId(messageId2, channelId2, guildId2, ref);
     pipRegistry.set(id, {
       ref,
       currentTime,
@@ -4260,15 +4260,15 @@ var import_react_youtube = __toESM(require_YouTube());
       component: "VIDEO",
       id,
       props: {
-        channel: ChannelStore.getChannel(channelId)
+        channel: ChannelStore.getChannel(channelId2)
       }
     });
   }
-  function hasPip(messageId, channelId, guildId, ref) {
-    return pipRegistry.has(getId(messageId, channelId, guildId, ref));
+  function hasPip(messageId2, channelId2, guildId2, ref) {
+    return pipRegistry.has(getId(messageId2, channelId2, guildId2, ref));
   }
-  function capturePiP(messageId, channelId, guildId, ref) {
-    const id = getId(messageId, channelId, guildId, ref);
+  function capturePiP(messageId2, channelId2, guildId2, ref) {
+    const id = getId(messageId2, channelId2, guildId2, ref);
     if (!pipRegistry.has(id)) {
       return null;
     }
@@ -4371,16 +4371,47 @@ var import_react_youtube = __toESM(require_YouTube());
       const res = calculateAspectRatioFit(props.width, props.height, MAX_WIDTH, MAX_HEIGHT);
       this.width = res.width;
       this.height = res.height;
+      const url = new URL(this.original.props.src);
+      this.id = url.searchParams.get("pipembedsid");
       this.onCaptureRequest = this.onCaptureRequest.bind(this);
+      this.onEmbedId = this.onEmbedId.bind(this);
+      Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
+      let messageId2 = null;
+      let channelId2 = null;
+      let guildId2 = null;
+      if (embedRegistry.has(this.id)) {
+        const obj = embedRegistry.get(this.id);
+        messageId2 = obj.messageId;
+        channelId2 = obj.channelId;
+        guildId2 = obj.guildId;
+      }
       this.state = {
-        showCapturePrompt: false
+        messageId: messageId2,
+        channelId: channelId2,
+        guildId: guildId2,
+        showCapturePrompt: messageId2 && hasPip(messageId2, channelId2, guildId2, this.original.props.src)
       };
     }
+    onEmbedId(e) {
+      if (this.state.messageId) {
+        return;
+      }
+      if (e.added.has(this.id)) {
+        const obj = e.added.get(this.id);
+        this.setState({
+          messageId: obj.messageId,
+          channelId: obj.channelId,
+          guildId: obj.guildId,
+          showCapturePrompt: hasPip(messageId, channelId, guildId, this.original.props.src)
+        });
+      }
+    }
     onCaptureRequest() {
-      Dispatcher.dirtyDispatch({
-        type: "PIP_DISCORD_EMBED_CAPTURE"
-      });
+      capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.original.props.src);
       this.setState({ showCapturePrompt: false });
+    }
+    componentWillUnmount() {
+      Dispatcher.unsubscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
     }
     render() {
       return this.state.showCapturePrompt ? /* @__PURE__ */ React.createElement(EmbedCapturePrompt, {
@@ -4401,19 +4432,19 @@ var import_react_youtube = __toESM(require_YouTube());
       this.onEmbedId = this.onEmbedId.bind(this);
       Dispatcher.subscribe("CHANNEL_SELECT", this.onChannelSelect);
       Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
-      let messageId = null;
-      let channelId = null;
-      let guildId = null;
+      let messageId2 = null;
+      let channelId2 = null;
+      let guildId2 = null;
       if (embedRegistry.has(this.id)) {
         const obj = embedRegistry.get(this.id);
-        messageId = obj.messageId;
-        channelId = obj.channelId;
-        guildId = obj.guildId;
+        messageId2 = obj.messageId;
+        channelId2 = obj.channelId;
+        guildId2 = obj.guildId;
       }
       this.state = {
-        messageId,
-        channelId,
-        guildId
+        messageId: messageId2,
+        channelId: channelId2,
+        guildId: guildId2
       };
     }
     onChannelSelect(_) {
@@ -4471,25 +4502,25 @@ var import_react_youtube = __toESM(require_YouTube());
         Dispatcher.subscribe("PIP_SHOULD_UPDATE_CURRENT_TIME", this.shouldUpdateCurrentTime);
       }
       Dispatcher.subscribe("PICTURE_IN_PICTURE_CLOSE", this.onPipClose);
-      let messageId = props.messageId;
-      let channelId = props.channelId;
-      let guildId = props.guildId;
+      let messageId2 = props.messageId;
+      let channelId2 = props.channelId;
+      let guildId2 = props.guildId;
       if (embedRegistry.has(this.embedId)) {
         const obj = embedRegistry.get(this.embedId);
-        messageId = obj.messageId;
-        channelId = obj.channelId;
-        guildId = obj.guildId;
+        messageId2 = obj.messageId;
+        channelId2 = obj.channelId;
+        guildId2 = obj.guildId;
       }
       let canGrab = false;
-      if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId, this.videoId)) {
+      if (messageId2 && channelId2 && props.embedId && hasPip(messageId2, channelId2, guildId2, this.videoId)) {
         canGrab = true;
       }
       this.state = {
         player: null,
         playerState: -1,
-        messageId,
-        channelId,
-        guildId,
+        messageId: messageId2,
+        channelId: channelId2,
+        guildId: guildId2,
         showClose: false,
         started: !!currentTime,
         currentTime,
@@ -4736,23 +4767,23 @@ var import_react_youtube = __toESM(require_YouTube());
       Patcher.after(PiPWindow.PictureInPictureWindow.prototype, "render", (that, _, ret) => {
         if (pipRegistry.has(that.props.id)) {
           const data = pipRegistry.get(that.props.id);
-          const [guildId, channelId, messageId] = that.props.id.split(":");
+          const [guildId2, channelId2, messageId2] = that.props.id.split(":");
           if (data.ref.includes("discord")) {
             ret.props.children.props.children = [
               /* @__PURE__ */ React.createElement(DiscordEmbedPiP, {
                 data,
-                messageId,
-                channelId,
-                guildId: guildId.substring(1)
+                messageId: messageId2,
+                channelId: channelId2,
+                guildId: guildId2.substring(1)
               })
             ];
           } else {
             ret.props.children.props.children = [
               /* @__PURE__ */ React.createElement(YouTubeFrame, {
                 data,
-                messageId,
-                channelId,
-                guildId: guildId.substring(1)
+                messageId: messageId2,
+                channelId: channelId2,
+                guildId: guildId2.substring(1)
               })
             ];
           }
@@ -4830,13 +4861,13 @@ var import_react_youtube = __toESM(require_YouTube());
       Patcher.unpatchAll();
     }
     forceUpdateEmbedIds(msg) {
-      const channelId = SelectedChannelStore.getChannelId();
-      const messages = msg ? [msg] : MessageStore.getMessages(channelId)._array;
+      const channelId2 = SelectedChannelStore.getChannelId();
+      const messages = msg ? [msg] : MessageStore.getMessages(channelId2)._array;
       const addedEmbeds = /* @__PURE__ */ new Map();
       for (const message of messages) {
         const messageInfo = {
           messageId: message.id,
-          channelId,
+          channelId: channelId2,
           guildId: SelectedGuildStore.getGuildId()
         };
         for (const attachment of message.attachments) {

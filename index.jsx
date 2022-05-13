@@ -162,18 +162,55 @@ module.exports = (Plugin, Library) => {
             this.width = res.width;
             this.height = res.height;
 
+            const url = new URL(this.original.props.src);
+            this.id = url.searchParams.get('pipembedsid');
+
             this.onCaptureRequest = this.onCaptureRequest.bind(this);
+            this.onEmbedId = this.onEmbedId.bind(this);
+
+            Dispatcher.subscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+
+            let messageId = null;
+            let channelId = null;
+            let guildId = null;
+            if (embedRegistry.has(this.id)) {
+                const obj = embedRegistry.get(this.id);
+                messageId = obj.messageId;
+                channelId = obj.channelId;
+                guildId = obj.guildId;
+            }
 
             this.state = {
-                showCapturePrompt: false
+                messageId: messageId,
+                channelId: channelId,
+                guildId: guildId,
+                showCapturePrompt: messageId && hasPip(messageId, channelId, guildId, this.original.props.src)
             };
         }
 
+        onEmbedId(e) {
+            if (this.state.messageId) {
+                return;
+            }
+
+            if (e.added.has(this.id)) {
+                const obj = e.added.get(this.id);
+                this.setState({
+                    messageId: obj.messageId,
+                    channelId: obj.channelId,
+                    guildId: obj.guildId,
+                    showCapturePrompt: hasPip(messageId, channelId, guildId, this.original.props.src)
+                });
+            }
+        }
+
         onCaptureRequest() {
-            Dispatcher.dirtyDispatch({
-                type: 'PIP_DISCORD_EMBED_CAPTURE'
-            });
+            capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.original.props.src);
             this.setState({showCapturePrompt: false});
+        }
+
+        componentWillUnmount() {
+            Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
         }
 
         render() {
