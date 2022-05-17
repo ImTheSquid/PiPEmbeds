@@ -17,6 +17,11 @@ module.exports = (Plugin, Library) => {
     const embedRegistry = new Map();
     const pipRegistry = new Map();
 
+    function base(urlStr) {
+        const url = new URL(urlStr);
+        return url.origin + url.pathname;
+    }
+
     const crypto = require('crypto');
     function getId(messageId, channelId, guildId, ref) {
         return `E${guildId}:${channelId}:${messageId}:${crypto.createHash('sha256').update(ref).digest('base64')}`;
@@ -67,6 +72,10 @@ module.exports = (Plugin, Library) => {
         return val;
     }
 
+    function processPiPScroll(deltaY) {
+
+    }
+
     let lastStartedVideo = null;
 
     /*function PiPWindowSelector(names, selectedIndex, onIndexChange) {
@@ -91,7 +100,7 @@ module.exports = (Plugin, Library) => {
         // Style tag is only needed for Discord embeds because the video element is weird
         return <div onDoubleClick={props.onDoubleClick} style={{width: 'inherit', height: 'inherit'}}>
             {!this.embedId && <div>
-                <div className='playerUi' onClick={props.onClick}>
+                <div className='playerUi' onClick={props.onClick} onWheel={e => processPiPScroll(e.deltaY)}>
                     <button onClick={props.onCloseClick} className='closeWrapper'>
                         CLOSE
                     </button>
@@ -113,7 +122,12 @@ module.exports = (Plugin, Library) => {
             super(props);
 
             this.onClick = this.onClick.bind(this);
+            this.onCaptureClick = this.onCaptureClick.bind(this);
+            this.shouldUpdateCurrentTime = this.shouldUpdateCurrentTime.bind(this);
+
             this.ref = React.createRef();
+
+            Dispatcher.subscribe('PIP_SHOULD_UPDATE_CURRENT_TIME', this.shouldUpdateCurrentTime);
 
             this.src = props.data.ref;
             this.currentTime = props.data.currentTime;
@@ -146,8 +160,31 @@ module.exports = (Plugin, Library) => {
             }
         }
 
+        onCaptureClick(e) {
+            e.preventDefault();
+            /*Dispatcher.dirtyDispatch({
+                type: 'PIP_DISCORD_CLOSE',
+                messageId: this.messageId,
+                channelId: this.channelId,
+                guildId: this.guildId,
+                src: this.src
+            });*/
+            capturePiP(this.messageId, this.channelId, this.guildId, this.src);
+        }
+
+        shouldUpdateCurrentTime() {
+            const id = getId(this.messageId, this.channelId, this.guildId, this.src);
+            let old = pipRegistry.get(id);
+            old.currentTime = this.ref.current.currentTime;
+            pipRegistry.set(id, old);
+        }
+
+        componentWillUnmount() {
+            Dispatcher.unsubscribe('PIP_SHOULD_UPDATE_CURRENT_TIME', this.shouldUpdateCurrentTime);
+        }
+
         render() {
-            return <PiPControls onDoubleClick={() => Transitions.transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`)} onClick={this.onClick} onCloseClick={() => capturePiP(this.messageId, this.channelId, this.guildId, this.src)}>
+            return <PiPControls onDoubleClick={() => Transitions.transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`)} onClick={this.onClick} onCloseClick={this.onCaptureClick}>
                 <video src={this.src} autoPlay ref={this.ref} style={this.state.width ? {width: this.state.width, height: this.state.height} : {}}/>
             </PiPControls>
         }
@@ -167,8 +204,10 @@ module.exports = (Plugin, Library) => {
 
             this.onCaptureRequest = this.onCaptureRequest.bind(this);
             this.onEmbedId = this.onEmbedId.bind(this);
+            this.onPiPCaptured = this.onPiPCaptured.bind(this);
 
             Dispatcher.subscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+            Dispatcher.subscribe('PIP_DISCORD_CLOSE', this.onPiPCaptured);
 
             let messageId = null;
             let channelId = null;
@@ -184,7 +223,7 @@ module.exports = (Plugin, Library) => {
                 messageId: messageId,
                 channelId: channelId,
                 guildId: guildId,
-                showCapturePrompt: messageId && hasPip(messageId, channelId, guildId, this.original.props.src)
+                showCapturePrompt: messageId && hasPip(messageId, channelId, guildId, base(this.original.props.src))
             };
         }
 
@@ -199,22 +238,40 @@ module.exports = (Plugin, Library) => {
                     messageId: obj.messageId,
                     channelId: obj.channelId,
                     guildId: obj.guildId,
-                    showCapturePrompt: hasPip(messageId, channelId, guildId, this.original.props.src)
+                    showCapturePrompt: hasPip(obj.messageId, obj.channelId, obj.guildId, base(this.original.props.src))
                 });
             }
         }
 
-        onCaptureRequest() {
-            capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.original.props.src);
+        onPiPCaptured() {
             this.setState({showCapturePrompt: false});
+        }
+
+        onCaptureRequest() {
+            // capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.original.props.src);
+            Dispatcher.dirtyDispatch({
+                type: 'PIP_DISCORD_CLOSE',
+                messageId: this.state.messageId,
+                channelId: this.state.channelId,
+                guildId: this.state.guildId,
+                src: this.original.props.src
+            });
         }
 
         componentWillUnmount() {
             Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+            Dispatcher.unsubscribe('PIP_DISCORD_CLOSE', this.onPiPCaptured);
         }
 
         render() {
-            return this.state.showCapturePrompt ? <EmbedCapturePrompt onCaptureRequest={this.onCaptureRequest} width={this.width} height={this.height}/> : this.original;
+            return <div style={{position: 'relative', width: this.width, height: this.height}}>
+                <div style={{position: 'absolute', zIndex: 1}}>
+                    {this.state.showCapturePrompt && <EmbedCapturePrompt onCaptureRequest={this.onCaptureRequest} width={this.width} height={this.height}/>}
+                </div>
+                <div style={{position: 'absolute', zIndex: 0}}>
+                    {this.original}
+                </div>
+            </div>
         }
     }
 
@@ -229,9 +286,11 @@ module.exports = (Plugin, Library) => {
 
             this.onChannelSelect = this.onChannelSelect.bind(this);
             this.onEmbedId = this.onEmbedId.bind(this);
+            this.onPiPCaptured = this.onPiPCaptured.bind(this);
 
             Dispatcher.subscribe('CHANNEL_SELECT', this.onChannelSelect);
             Dispatcher.subscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+            Dispatcher.subscribe('PIP_DISCORD_CLOSE', this.onPiPCaptured);
 
             let messageId = null;
             let channelId = null;
@@ -260,7 +319,7 @@ module.exports = (Plugin, Library) => {
                 return;
             }
 
-            registerPiP(video.src, video.currentTime, video.volume, this.state.messageId, this.state.channelId, this.state.guildId);
+            registerPiP(base(video.src), video.currentTime, video.volume, this.state.messageId, this.state.channelId, this.state.guildId);
         }
 
         onEmbedId(e) {
@@ -278,9 +337,19 @@ module.exports = (Plugin, Library) => {
             }
         }
 
+        onPiPCaptured(e) {
+            if (e.messageId == this.state.messageId && this.state.channelId == e.channelId && this.state.guildId == e.guildId && base(this.that.mediaRef.current.src) == base(e.src)) {
+                const grabbed = capturePiP(e.messageId, e.channelId, e.guildId, base(e.src));
+                this.that.mediaRef.current.volume = grabbed.volume;
+                this.that.mediaRef.current.currentTime = grabbed.currentTime;
+                this.that.setPlay(true);
+            }
+        }
+
         componentWillUnmount() {
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.onChannelSelect);
             Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
+            Dispatcher.unsubscribe('PIP_DISCORD_CLOSE', this.onPiPCaptured);
         }
 
         render() {
@@ -433,6 +502,8 @@ module.exports = (Plugin, Library) => {
         }
 
         shouldUpdateCurrentTime(_) {
+            if (this.embedId) return;
+
             const id = getId(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
             let old = pipRegistry.get(id);
             old.currentTime = this.state.player.getCurrentTime();
@@ -464,7 +535,8 @@ module.exports = (Plugin, Library) => {
             }
         }
 
-        onCloseClick() {
+        onCloseClick(e) {
+            e.preventDefault();
             capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
         }
 

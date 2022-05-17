@@ -58,21 +58,18 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __markAsModule = (target) => __defProp(target, "__esModule", { value: true });
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
-var __reExport = (target, module2, copyDefault, desc) => {
-  if (module2 && typeof module2 === "object" || typeof module2 === "function") {
-    for (let key of __getOwnPropNames(module2))
-      if (!__hasOwnProp.call(target, key) && (copyDefault || key !== "default"))
-        __defProp(target, key, { get: () => module2[key], enumerable: !(desc = __getOwnPropDesc(module2, key)) || desc.enumerable });
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
   }
-  return target;
+  return to;
 };
-var __toESM = (module2, isNodeMode) => {
-  return __reExport(__markAsModule(__defProp(module2 != null ? __create(__getProtoOf(module2)) : {}, "default", !isNodeMode && module2 && module2.__esModule ? { get: () => module2.default, enumerable: true } : { value: module2, enumerable: true })), module2);
-};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));
 
 // node_modules/react-is/cjs/react-is.production.min.js
 var require_react_is_production_min = __commonJS({
@@ -1288,7 +1285,7 @@ var require_react_production_min = __commonJS({
     exports2.useTransition = function() {
       return U.current.useTransition();
     };
-    exports2.version = "18.1.0";
+    exports2.version = "18.0.0-fc46dba67-20220329";
   }
 });
 
@@ -1302,12 +1299,7 @@ var require_react_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var ReactVersion = "18.1.0";
-        var enableScopeAPI = false;
-        var enableCacheElement = false;
-        var enableTransitionTracing = false;
-        var enableLegacyHidden = false;
-        var enableDebugTracing = false;
+        var ReactVersion = "18.0.0-fc46dba67-20220329";
         var REACT_ELEMENT_TYPE = Symbol.for("react.element");
         var REACT_PORTAL_TYPE = Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -1373,6 +1365,11 @@ var require_react_development = __commonJS({
             return stack;
           };
         }
+        var enableScopeAPI = false;
+        var enableCacheElement = false;
+        var enableTransitionTracing = false;
+        var enableLegacyHidden = false;
+        var enableDebugTracing = false;
         var ReactSharedInternals = {
           ReactCurrentDispatcher,
           ReactCurrentBatchConfig,
@@ -2198,10 +2195,7 @@ var require_react_development = __commonJS({
           }
           return elementType;
         }
-        var REACT_MODULE_REFERENCE;
-        {
-          REACT_MODULE_REFERENCE = Symbol.for("react.module.reference");
-        }
+        var REACT_MODULE_REFERENCE = Symbol.for("react.module.reference");
         function isValidElementType(type) {
           if (typeof type === "string" || typeof type === "function") {
             return true;
@@ -3986,7 +3980,7 @@ var require_YouTube = __commonJS({
       for (var name in all)
         __defProp2(target, name, { get: all[name], enumerable: true });
     };
-    var __copyProps = (to, from, except, desc) => {
+    var __copyProps2 = (to, from, except, desc) => {
       if (from && typeof from === "object" || typeof from === "function") {
         for (let key of __getOwnPropNames2(from))
           if (!__hasOwnProp2.call(to, key) && key !== except)
@@ -3994,8 +3988,8 @@ var require_YouTube = __commonJS({
       }
       return to;
     };
-    var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target, mod));
-    var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+    var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps2(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target, mod));
+    var __toCommonJS = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var YouTube_exports = {};
     __export(YouTube_exports, {
       default: () => YouTube_default
@@ -4244,12 +4238,16 @@ var import_react_youtube = __toESM(require_YouTube());
   const MessageAccessories = BdApi.findModuleByProps("MessageAccessories").MessageAccessories;
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
-  const crypto = require("crypto");
-  function getId(messageId2, channelId2, guildId2, ref) {
-    return `E${guildId2}:${channelId2}:${messageId2}:${crypto.createHash("sha256").update(ref).digest("base64")}`;
+  function base(urlStr) {
+    const url = new URL(urlStr);
+    return url.origin + url.pathname;
   }
-  function registerPiP(ref, currentTime, volume, messageId2, channelId2, guildId2) {
-    const id = getId(messageId2, channelId2, guildId2, ref);
+  const crypto = require("crypto");
+  function getId(messageId, channelId, guildId, ref) {
+    return `E${guildId}:${channelId}:${messageId}:${crypto.createHash("sha256").update(ref).digest("base64")}`;
+  }
+  function registerPiP(ref, currentTime, volume, messageId, channelId, guildId) {
+    const id = getId(messageId, channelId, guildId, ref);
     pipRegistry.set(id, {
       ref,
       currentTime,
@@ -4260,15 +4258,15 @@ var import_react_youtube = __toESM(require_YouTube());
       component: "VIDEO",
       id,
       props: {
-        channel: ChannelStore.getChannel(channelId2)
+        channel: ChannelStore.getChannel(channelId)
       }
     });
   }
-  function hasPip(messageId2, channelId2, guildId2, ref) {
-    return pipRegistry.has(getId(messageId2, channelId2, guildId2, ref));
+  function hasPip(messageId, channelId, guildId, ref) {
+    return pipRegistry.has(getId(messageId, channelId, guildId, ref));
   }
-  function capturePiP(messageId2, channelId2, guildId2, ref) {
-    const id = getId(messageId2, channelId2, guildId2, ref);
+  function capturePiP(messageId, channelId, guildId, ref) {
+    const id = getId(messageId, channelId, guildId, ref);
     if (!pipRegistry.has(id)) {
       return null;
     }
@@ -4283,6 +4281,8 @@ var import_react_youtube = __toESM(require_YouTube());
       id
     });
     return val;
+  }
+  function processPiPScroll(deltaY) {
   }
   let lastStartedVideo = null;
   function EmbedCapturePrompt(props) {
@@ -4309,7 +4309,8 @@ var import_react_youtube = __toESM(require_YouTube());
       style: { width: "inherit", height: "inherit" }
     }, !this.embedId && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", {
       className: "playerUi",
-      onClick: props.onClick
+      onClick: props.onClick,
+      onWheel: (e) => processPiPScroll(e.deltaY)
     }, /* @__PURE__ */ React.createElement("button", {
       onClick: props.onCloseClick,
       className: "closeWrapper"
@@ -4323,7 +4324,10 @@ var import_react_youtube = __toESM(require_YouTube());
     constructor(props) {
       super(props);
       this.onClick = this.onClick.bind(this);
+      this.onCaptureClick = this.onCaptureClick.bind(this);
+      this.shouldUpdateCurrentTime = this.shouldUpdateCurrentTime.bind(this);
       this.ref = React.createRef();
+      Dispatcher.subscribe("PIP_SHOULD_UPDATE_CURRENT_TIME", this.shouldUpdateCurrentTime);
       this.src = props.data.ref;
       this.currentTime = props.data.currentTime;
       this.volume = props.data.volume;
@@ -4350,11 +4354,24 @@ var import_react_youtube = __toESM(require_YouTube());
         this.ref.current.pause();
       }
     }
+    onCaptureClick(e) {
+      e.preventDefault();
+      capturePiP(this.messageId, this.channelId, this.guildId, this.src);
+    }
+    shouldUpdateCurrentTime() {
+      const id = getId(this.messageId, this.channelId, this.guildId, this.src);
+      let old = pipRegistry.get(id);
+      old.currentTime = this.ref.current.currentTime;
+      pipRegistry.set(id, old);
+    }
+    componentWillUnmount() {
+      Dispatcher.unsubscribe("PIP_SHOULD_UPDATE_CURRENT_TIME", this.shouldUpdateCurrentTime);
+    }
     render() {
       return /* @__PURE__ */ React.createElement(PiPControls, {
         onDoubleClick: () => Transitions.transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`),
         onClick: this.onClick,
-        onCloseClick: () => capturePiP(this.messageId, this.channelId, this.guildId, this.src)
+        onCloseClick: this.onCaptureClick
       }, /* @__PURE__ */ React.createElement("video", {
         src: this.src,
         autoPlay: true,
@@ -4375,21 +4392,23 @@ var import_react_youtube = __toESM(require_YouTube());
       this.id = url.searchParams.get("pipembedsid");
       this.onCaptureRequest = this.onCaptureRequest.bind(this);
       this.onEmbedId = this.onEmbedId.bind(this);
+      this.onPiPCaptured = this.onPiPCaptured.bind(this);
       Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
-      let messageId2 = null;
-      let channelId2 = null;
-      let guildId2 = null;
+      Dispatcher.subscribe("PIP_DISCORD_CLOSE", this.onPiPCaptured);
+      let messageId = null;
+      let channelId = null;
+      let guildId = null;
       if (embedRegistry.has(this.id)) {
         const obj = embedRegistry.get(this.id);
-        messageId2 = obj.messageId;
-        channelId2 = obj.channelId;
-        guildId2 = obj.guildId;
+        messageId = obj.messageId;
+        channelId = obj.channelId;
+        guildId = obj.guildId;
       }
       this.state = {
-        messageId: messageId2,
-        channelId: channelId2,
-        guildId: guildId2,
-        showCapturePrompt: messageId2 && hasPip(messageId2, channelId2, guildId2, this.original.props.src)
+        messageId,
+        channelId,
+        guildId,
+        showCapturePrompt: messageId && hasPip(messageId, channelId, guildId, base(this.original.props.src))
       };
     }
     onEmbedId(e) {
@@ -4402,23 +4421,38 @@ var import_react_youtube = __toESM(require_YouTube());
           messageId: obj.messageId,
           channelId: obj.channelId,
           guildId: obj.guildId,
-          showCapturePrompt: hasPip(messageId, channelId, guildId, this.original.props.src)
+          showCapturePrompt: hasPip(obj.messageId, obj.channelId, obj.guildId, base(this.original.props.src))
         });
       }
     }
-    onCaptureRequest() {
-      capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.original.props.src);
+    onPiPCaptured() {
       this.setState({ showCapturePrompt: false });
+    }
+    onCaptureRequest() {
+      Dispatcher.dirtyDispatch({
+        type: "PIP_DISCORD_CLOSE",
+        messageId: this.state.messageId,
+        channelId: this.state.channelId,
+        guildId: this.state.guildId,
+        src: this.original.props.src
+      });
     }
     componentWillUnmount() {
       Dispatcher.unsubscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
+      Dispatcher.unsubscribe("PIP_DISCORD_CLOSE", this.onPiPCaptured);
     }
     render() {
-      return this.state.showCapturePrompt ? /* @__PURE__ */ React.createElement(EmbedCapturePrompt, {
+      return /* @__PURE__ */ React.createElement("div", {
+        style: { position: "relative", width: this.width, height: this.height }
+      }, /* @__PURE__ */ React.createElement("div", {
+        style: { position: "absolute", zIndex: 1 }
+      }, this.state.showCapturePrompt && /* @__PURE__ */ React.createElement(EmbedCapturePrompt, {
         onCaptureRequest: this.onCaptureRequest,
         width: this.width,
         height: this.height
-      }) : this.original;
+      })), /* @__PURE__ */ React.createElement("div", {
+        style: { position: "absolute", zIndex: 0 }
+      }, this.original));
     }
   }
   class EmbedFrameShim extends React.Component {
@@ -4430,21 +4464,23 @@ var import_react_youtube = __toESM(require_YouTube());
       this.id = url.searchParams.get("pipembedsid");
       this.onChannelSelect = this.onChannelSelect.bind(this);
       this.onEmbedId = this.onEmbedId.bind(this);
+      this.onPiPCaptured = this.onPiPCaptured.bind(this);
       Dispatcher.subscribe("CHANNEL_SELECT", this.onChannelSelect);
       Dispatcher.subscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
-      let messageId2 = null;
-      let channelId2 = null;
-      let guildId2 = null;
+      Dispatcher.subscribe("PIP_DISCORD_CLOSE", this.onPiPCaptured);
+      let messageId = null;
+      let channelId = null;
+      let guildId = null;
       if (embedRegistry.has(this.id)) {
         const obj = embedRegistry.get(this.id);
-        messageId2 = obj.messageId;
-        channelId2 = obj.channelId;
-        guildId2 = obj.guildId;
+        messageId = obj.messageId;
+        channelId = obj.channelId;
+        guildId = obj.guildId;
       }
       this.state = {
-        messageId: messageId2,
-        channelId: channelId2,
-        guildId: guildId2
+        messageId,
+        channelId,
+        guildId
       };
     }
     onChannelSelect(_) {
@@ -4455,7 +4491,7 @@ var import_react_youtube = __toESM(require_YouTube());
         Logger.err("No info for PiP!");
         return;
       }
-      registerPiP(video.src, video.currentTime, video.volume, this.state.messageId, this.state.channelId, this.state.guildId);
+      registerPiP(base(video.src), video.currentTime, video.volume, this.state.messageId, this.state.channelId, this.state.guildId);
     }
     onEmbedId(e) {
       if (this.state.messageId) {
@@ -4470,9 +4506,18 @@ var import_react_youtube = __toESM(require_YouTube());
         });
       }
     }
+    onPiPCaptured(e) {
+      if (e.messageId == this.state.messageId && this.state.channelId == e.channelId && this.state.guildId == e.guildId && base(this.that.mediaRef.current.src) == base(e.src)) {
+        const grabbed = capturePiP(e.messageId, e.channelId, e.guildId, base(e.src));
+        this.that.mediaRef.current.volume = grabbed.volume;
+        this.that.mediaRef.current.currentTime = grabbed.currentTime;
+        this.that.setPlay(true);
+      }
+    }
     componentWillUnmount() {
       Dispatcher.unsubscribe("CHANNEL_SELECT", this.onChannelSelect);
       Dispatcher.unsubscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
+      Dispatcher.unsubscribe("PIP_DISCORD_CLOSE", this.onPiPCaptured);
     }
     render() {
       return this.original;
@@ -4502,25 +4547,25 @@ var import_react_youtube = __toESM(require_YouTube());
         Dispatcher.subscribe("PIP_SHOULD_UPDATE_CURRENT_TIME", this.shouldUpdateCurrentTime);
       }
       Dispatcher.subscribe("PICTURE_IN_PICTURE_CLOSE", this.onPipClose);
-      let messageId2 = props.messageId;
-      let channelId2 = props.channelId;
-      let guildId2 = props.guildId;
+      let messageId = props.messageId;
+      let channelId = props.channelId;
+      let guildId = props.guildId;
       if (embedRegistry.has(this.embedId)) {
         const obj = embedRegistry.get(this.embedId);
-        messageId2 = obj.messageId;
-        channelId2 = obj.channelId;
-        guildId2 = obj.guildId;
+        messageId = obj.messageId;
+        channelId = obj.channelId;
+        guildId = obj.guildId;
       }
       let canGrab = false;
-      if (messageId2 && channelId2 && props.embedId && hasPip(messageId2, channelId2, guildId2, this.videoId)) {
+      if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId, this.videoId)) {
         canGrab = true;
       }
       this.state = {
         player: null,
         playerState: -1,
-        messageId: messageId2,
-        channelId: channelId2,
-        guildId: guildId2,
+        messageId,
+        channelId,
+        guildId,
         showClose: false,
         started: !!currentTime,
         currentTime,
@@ -4591,6 +4636,8 @@ var import_react_youtube = __toESM(require_YouTube());
       }
     }
     shouldUpdateCurrentTime(_) {
+      if (this.embedId)
+        return;
       const id = getId(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
       let old = pipRegistry.get(id);
       old.currentTime = this.state.player.getCurrentTime();
@@ -4616,7 +4663,8 @@ var import_react_youtube = __toESM(require_YouTube());
         this.state.player.playVideo();
       }
     }
-    onCloseClick() {
+    onCloseClick(e) {
+      e.preventDefault();
       capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
     }
     onDoubleClick() {
@@ -4767,23 +4815,23 @@ var import_react_youtube = __toESM(require_YouTube());
       Patcher.after(PiPWindow.PictureInPictureWindow.prototype, "render", (that, _, ret) => {
         if (pipRegistry.has(that.props.id)) {
           const data = pipRegistry.get(that.props.id);
-          const [guildId2, channelId2, messageId2] = that.props.id.split(":");
+          const [guildId, channelId, messageId] = that.props.id.split(":");
           if (data.ref.includes("discord")) {
             ret.props.children.props.children = [
               /* @__PURE__ */ React.createElement(DiscordEmbedPiP, {
                 data,
-                messageId: messageId2,
-                channelId: channelId2,
-                guildId: guildId2.substring(1)
+                messageId,
+                channelId,
+                guildId: guildId.substring(1)
               })
             ];
           } else {
             ret.props.children.props.children = [
               /* @__PURE__ */ React.createElement(YouTubeFrame, {
                 data,
-                messageId: messageId2,
-                channelId: channelId2,
-                guildId: guildId2.substring(1)
+                messageId,
+                channelId,
+                guildId: guildId.substring(1)
               })
             ];
           }
@@ -4861,13 +4909,13 @@ var import_react_youtube = __toESM(require_YouTube());
       Patcher.unpatchAll();
     }
     forceUpdateEmbedIds(msg) {
-      const channelId2 = SelectedChannelStore.getChannelId();
-      const messages = msg ? [msg] : MessageStore.getMessages(channelId2)._array;
+      const channelId = SelectedChannelStore.getChannelId();
+      const messages = msg ? [msg] : MessageStore.getMessages(channelId)._array;
       const addedEmbeds = /* @__PURE__ */ new Map();
       for (const message of messages) {
         const messageInfo = {
           messageId: message.id,
-          channelId: channelId2,
+          channelId,
           guildId: SelectedGuildStore.getGuildId()
         };
         for (const attachment of message.attachments) {
