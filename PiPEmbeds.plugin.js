@@ -4236,6 +4236,8 @@ var import_react_youtube = __toESM(require_YouTube());
   const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
   const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
   const MessageAccessories = BdApi.findModuleByProps("MessageAccessories").MessageAccessories;
+  const PictureInPictureStore = BdApi.findModuleByProps("getDockedRect", "isOpen");
+  const PictureInPictureContainer = BdApi.findModuleByDisplayName("FluxContainer(PictureInPictureContainer)");
   const embedRegistry = /* @__PURE__ */ new Map();
   const pipRegistry = /* @__PURE__ */ new Map();
   function base(urlStr) {
@@ -4253,13 +4255,10 @@ var import_react_youtube = __toESM(require_YouTube());
       currentTime,
       volume
     });
+    currentPiPId = id;
     Dispatcher.dirtyDispatch({
-      type: "PICTURE_IN_PICTURE_OPEN",
-      component: "VIDEO",
-      id,
-      props: {
-        channel: ChannelStore.getChannel(channelId)
-      }
+      type: "PIP_OPEN",
+      id
     });
   }
   function hasPip(messageId, channelId, guildId, ref) {
@@ -4276,13 +4275,30 @@ var import_react_youtube = __toESM(require_YouTube());
       return null;
     }
     pipRegistry.delete(id);
+    currentPiPId = null;
     Dispatcher.dirtyDispatch({
-      type: "PICTURE_IN_PICTURE_CLOSE",
+      type: "PIP_CLOSE",
       id
     });
     return val;
   }
   function processPiPScroll(deltaY) {
+    if (PictureInPictureStore.pipWindows.size <= 1)
+      return;
+    const changes = Math.round(deltaY / 50);
+    const pipKeys = Array.from(PictureInPictureStore.pipWindows.keys());
+    const idx = pipKeys.findIndex((key) => key === PictureInPictureStore.pipWindow.id);
+    let newPos = idx + changes;
+    if (newPos < 0) {
+      newPos = pipKeys.length + newPos % pipKeys.length;
+    } else if (newPos >= PictureInPictureStore.pipWindows.size) {
+      newPos = newPos % pipKeys.length;
+    }
+    Dispatcher.dirtyDispatch({ type: "PIP_SHOULD_UPDATE_CURRENT_TIME" });
+    Dispatcher.dirtyDispatch({
+      type: "PIP_OPEN",
+      id: pipKeys[newPos]
+    });
   }
   let lastStartedVideo = null;
   function EmbedCapturePrompt(props) {
@@ -4483,6 +4499,14 @@ var import_react_youtube = __toESM(require_YouTube());
         guildId
       };
     }
+    componentDidMount() {
+      this.that.mediaRef.current.addEventListener("play", (_) => {
+        lastStartedVideo = {
+          ref: base(this.that.mediaRef.current.src),
+          messageId: this.state.messageId
+        };
+      });
+    }
     onChannelSelect(_) {
       const video = this.that.mediaRef.current;
       if (video.paused || video.ended)
@@ -4546,7 +4570,7 @@ var import_react_youtube = __toESM(require_YouTube());
       if (!this.embedId) {
         Dispatcher.subscribe("PIP_SHOULD_UPDATE_CURRENT_TIME", this.shouldUpdateCurrentTime);
       }
-      Dispatcher.subscribe("PICTURE_IN_PICTURE_CLOSE", this.onPipClose);
+      Dispatcher.subscribe("PIP_CLOSE", this.onPipClose);
       let messageId = props.messageId;
       let channelId = props.channelId;
       let guildId = props.guildId;
@@ -4651,7 +4675,7 @@ var import_react_youtube = __toESM(require_YouTube());
     componentWillUnmount() {
       Dispatcher.unsubscribe("PIP_EMBED_ID_UPDATE", this.onEmbedId);
       Dispatcher.unsubscribe("CHANNEL_SELECT", this.onChannelSelect);
-      Dispatcher.unsubscribe("PICTURE_IN_PICTURE_CLOSE", this.onPipClose);
+      Dispatcher.unsubscribe("PIP_CLOSE", this.onPipClose);
       if (!this.embedId) {
         Dispatcher.unsubscribe("PIP_SHOULD_UPDATE_CURRENT_TIME", this.shouldUpdateCurrentTime);
       }
@@ -4722,6 +4746,87 @@ var import_react_youtube = __toESM(require_YouTube());
         className: this.embedId ? "embedMargin" : "",
         style: this.embedId ? {} : { width: "320px", height: "180px" }
       }, this.state.started || !this.embedId ? this.renderPlayer() : this.renderPreview());
+    }
+  }
+  class PiPSourceController extends React.Component {
+    constructor(props) {
+      super(props);
+      this.onPiPOpen = this.onPiPOpen.bind(this);
+      this.onPiPClose = this.onPiPClose.bind(this);
+      Dispatcher.subscribe("PIP_OPEN", this.onPiPOpen);
+      Dispatcher.subscribe("PIP_CLOSE", this.onPiPClose);
+      this.state = {
+        currentId: null
+      };
+    }
+    onPiPOpen(e) {
+      Logger.log(e.id);
+      this.setState({ currentId: e.id });
+    }
+    onPiPClose() {
+      this.setState({ currentId: null });
+    }
+    componentWillUnmount() {
+      Dispatcher.unsubscribe("PIP_OPEN", this.onPiPOpen);
+      Dispatcher.unsubscribe("PIP_CLOSE", this.onPiPClose);
+    }
+    renderEmbed() {
+      const data = pipRegistry.get(this.state.currentId);
+      const [guildId, channelId, messageId] = this.state.currentId.split(":");
+      Logger.log(`RENDER CONTROLLER WITH ID ${this.state.currentId}`);
+      if (data.ref.includes("discord")) {
+        return /* @__PURE__ */ React.createElement(DiscordEmbedPiP, {
+          data,
+          messageId,
+          channelId,
+          guildId: guildId.substring(1)
+        });
+      } else {
+        return /* @__PURE__ */ React.createElement(YouTubeFrame, {
+          data,
+          messageId,
+          channelId,
+          guildId: guildId.substring(1)
+        });
+      }
+    }
+    render() {
+      return /* @__PURE__ */ React.createElement("div", null, this.state.currentId ? this.renderEmbed() : null, /* @__PURE__ */ React.createElement("p", {
+        style: { color: "white" }
+      }, this.state.currentId));
+    }
+  }
+  class PiPWindowController extends React.Component {
+    constructor(props) {
+      super(props);
+      this.maxX = props.maxX;
+      this.maxY = props.maxY;
+      this.state = {
+        position: "top-right"
+      };
+    }
+    render() {
+      const windows = /* @__PURE__ */ new Map();
+      const pipObj = {
+        component: "EMBED",
+        docked: false,
+        id: "PIPEMBEDS",
+        position: this.state.position,
+        props: {}
+      };
+      windows.set("PIPEMBEDS", pipObj);
+      return React.createElement(PiPWindow.default, {
+        pipWindows: windows,
+        selectedPIPWindow: pipObj,
+        maxX: this.maxX,
+        maxY: this.maxY,
+        onWindowMove: (_, pos) => {
+          this.setState({ position: pos });
+        },
+        pictureInPictureComponents: {
+          EMBED: PiPSourceController
+        }
+      });
     }
   }
   return class extends Plugin {
@@ -4812,31 +4917,6 @@ var import_react_youtube = __toESM(require_YouTube());
                     align-items: center;
                 }
             `);
-      Patcher.after(PiPWindow.PictureInPictureWindow.prototype, "render", (that, _, ret) => {
-        if (pipRegistry.has(that.props.id)) {
-          const data = pipRegistry.get(that.props.id);
-          const [guildId, channelId, messageId] = that.props.id.split(":");
-          if (data.ref.includes("discord")) {
-            ret.props.children.props.children = [
-              /* @__PURE__ */ React.createElement(DiscordEmbedPiP, {
-                data,
-                messageId,
-                channelId,
-                guildId: guildId.substring(1)
-              })
-            ];
-          } else {
-            ret.props.children.props.children = [
-              /* @__PURE__ */ React.createElement(YouTubeFrame, {
-                data,
-                messageId,
-                channelId,
-                guildId: guildId.substring(1)
-              })
-            ];
-          }
-        }
-      });
       Patcher.after(Embed.default.prototype, "render", (that, args, ret) => {
         if (!(that.props.embed.url && (that.props.embed.url.includes("youtu.be") || that.props.embed.url.includes("youtube.com/watch")))) {
           return;
@@ -4899,6 +4979,17 @@ var import_react_youtube = __toESM(require_YouTube());
           child.props.children.props.embed.video.url = url.toString();
           child.props.children.props.embed.video.proxyURL = url.toString();
         }
+      });
+      Patcher.instead(PictureInPictureContainer.prototype, "render", (that, args, original) => {
+        Logger.log(that);
+        Logger.log(args);
+        const origin = original();
+        return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", {
+          style: { color: "white" }
+        }, "That's a ratio"), origin, /* @__PURE__ */ React.createElement(PiPWindowController, {
+          maxX: origin.props.maxX,
+          maxY: origin.props.maxY
+        }));
       });
     }
     onStop() {

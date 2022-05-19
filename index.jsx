@@ -13,6 +13,8 @@ module.exports = (Plugin, Library) => {
     const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
     const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
     const MessageAccessories = BdApi.findModuleByProps("MessageAccessories").MessageAccessories;
+    const PictureInPictureStore = BdApi.findModuleByProps("getDockedRect", "isOpen");
+    const PictureInPictureContainer = BdApi.findModuleByDisplayName("FluxContainer(PictureInPictureContainer)");
 
     const embedRegistry = new Map();
     const pipRegistry = new Map();
@@ -35,13 +37,11 @@ module.exports = (Plugin, Library) => {
             volume: volume
         });
 
+        currentPiPId = id;
+
         Dispatcher.dirtyDispatch({
-            type: 'PICTURE_IN_PICTURE_OPEN',
-            component: 'VIDEO',
-            id: id,
-            props: {
-                channel: ChannelStore.getChannel(channelId)
-            }
+            type: 'PIP_OPEN',
+            id: id
         });
     }
 
@@ -64,8 +64,10 @@ module.exports = (Plugin, Library) => {
         }
         pipRegistry.delete(id);
 
+        currentPiPId = null;
+
         Dispatcher.dirtyDispatch({
-            type: 'PICTURE_IN_PICTURE_CLOSE',
+            type: 'PIP_CLOSE',
             id: id
         });
 
@@ -73,16 +75,37 @@ module.exports = (Plugin, Library) => {
     }
 
     function processPiPScroll(deltaY) {
+        // Return if only one PiP window
+        if (PictureInPictureStore.pipWindows.size <= 1) return;
 
+        // Determine # of changes
+        const changes = Math.round(deltaY / 50);
+
+        // Find current position in map and offset as needed
+        const pipKeys = Array.from(PictureInPictureStore.pipWindows.keys());
+        const idx = pipKeys.findIndex(key => key === PictureInPictureStore.pipWindow.id);
+        let newPos = idx + changes;
+        if (newPos < 0) {
+            newPos = pipKeys.length + newPos % pipKeys.length;
+        } else if (newPos >= PictureInPictureStore.pipWindows.size) {
+            newPos = newPos % pipKeys.length;
+        }
+
+        // Make sure players sync time with store before unmount
+        Dispatcher.dirtyDispatch({type: 'PIP_SHOULD_UPDATE_CURRENT_TIME'});
+
+        /*Dispatcher.dirtyDispatch({
+            type: 'PIP_UPDATE_SELECTED_WINDOW',
+            id: pipKeys[newPos]
+        });*/
+
+        Dispatcher.dirtyDispatch({
+            type: 'PIP_OPEN',
+            id: pipKeys[newPos]
+        });
     }
 
     let lastStartedVideo = null;
-
-    /*function PiPWindowSelector(names, selectedIndex, onIndexChange) {
-        return (
-
-        );
-    }*/
 
     function EmbedCapturePrompt(props) {
         return <div className='embedFrame' style={{width: props.width ?? '400px', height: props.height ?? '225px'}}>
@@ -162,13 +185,6 @@ module.exports = (Plugin, Library) => {
 
         onCaptureClick(e) {
             e.preventDefault();
-            /*Dispatcher.dirtyDispatch({
-                type: 'PIP_DISCORD_CLOSE',
-                messageId: this.messageId,
-                channelId: this.channelId,
-                guildId: this.guildId,
-                src: this.src
-            });*/
             capturePiP(this.messageId, this.channelId, this.guildId, this.src);
         }
 
@@ -309,6 +325,15 @@ module.exports = (Plugin, Library) => {
             };
         }
 
+        componentDidMount() {
+            this.that.mediaRef.current.addEventListener("play", _ => {
+                lastStartedVideo = {
+                    ref: base(this.that.mediaRef.current.src),
+                    messageId: this.state.messageId
+                }
+            });
+        }
+
         onChannelSelect(_) {
             const video = this.that.mediaRef.current;
             if (video.paused || video.ended) return;
@@ -390,7 +415,7 @@ module.exports = (Plugin, Library) => {
             }
 
             // Used to figure out if pip window for video closed while in PiP preview embed mode
-            Dispatcher.subscribe('PICTURE_IN_PICTURE_CLOSE', this.onPipClose);
+            Dispatcher.subscribe('PIP_CLOSE', this.onPipClose);
 
             let messageId = props.messageId;
             let channelId = props.channelId;
@@ -519,7 +544,7 @@ module.exports = (Plugin, Library) => {
         componentWillUnmount() {
             Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.onChannelSelect);
-            Dispatcher.unsubscribe('PICTURE_IN_PICTURE_CLOSE', this.onPipClose);
+            Dispatcher.unsubscribe('PIP_CLOSE', this.onPipClose);
 
             // If this is a PiP component, unsubscribe from PiP-specific events
             if (!this.embedId) {
@@ -583,6 +608,95 @@ module.exports = (Plugin, Library) => {
             return <div className={this.embedId ? 'embedMargin' : ''} style={this.embedId ? {} : {width: '320px', height: '180px'}}>
                 {this.state.started || !this.embedId ? this.renderPlayer() : this.renderPreview()}
             </div>
+        }
+    }
+
+    // Manages state for selecting and switching PiP sources
+    class PiPSourceController extends React.Component {
+        constructor(props) {
+            super(props);
+            this.onPiPOpen = this.onPiPOpen.bind(this);
+            this.onPiPClose = this.onPiPClose.bind(this);
+
+            Dispatcher.subscribe('PIP_OPEN', this.onPiPOpen);
+            Dispatcher.subscribe('PIP_CLOSE', this.onPiPClose);
+
+            this.state = {
+                currentId: null
+            };
+        }
+
+        onPiPOpen(e) {
+            Logger.log(e.id)
+            this.setState({currentId: e.id});
+        }
+
+        onPiPClose() {
+            this.setState({currentId: null});
+        }
+
+        componentWillUnmount() {
+            Dispatcher.unsubscribe('PIP_OPEN', this.onPiPOpen);
+            Dispatcher.unsubscribe('PIP_CLOSE', this.onPiPClose);
+        }
+
+        renderEmbed() {
+            const data = pipRegistry.get(this.state.currentId);
+            const [guildId, channelId, messageId] = this.state.currentId.split(':');
+            Logger.log(`RENDER CONTROLLER WITH ID ${this.state.currentId}`)
+
+            if (data.ref.includes('discord')) {
+                return <DiscordEmbedPiP data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
+            } else {
+                return <YouTubeFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
+            }
+        }
+
+        render() {
+            return <div>
+                {this.state.currentId ? this.renderEmbed() : null}
+                <p style={{color: "white"}}>{this.state.currentId}</p>
+            </div>
+        }
+    }
+
+    // Handles window movement and positioning
+    class PiPWindowController extends React.Component {
+        constructor(props) {
+            super(props);
+            this.maxX = props.maxX;
+            this.maxY = props.maxY;
+
+            this.state = {
+                position: "top-right"
+            }
+        }
+
+        render() {
+            const windows = new Map();
+            
+            const pipObj = {
+                component: "EMBED",
+                docked: false,
+                id: "PIPEMBEDS",
+                position: this.state.position,
+                props: {}
+            };
+
+            windows.set("PIPEMBEDS", pipObj);
+
+            return React.createElement(PiPWindow.default, {
+                pipWindows: windows,
+                selectedPIPWindow: pipObj,
+                maxX: this.maxX,
+                maxY: this.maxY,
+                onWindowMove: (_, pos) => {
+                    this.setState({position: pos});
+                },
+                pictureInPictureComponents: {
+                    EMBED: PiPSourceController
+                }
+            })
         }
     }
 
@@ -675,23 +789,6 @@ module.exports = (Plugin, Library) => {
                 }
             `);
 
-            Patcher.after(PiPWindow.PictureInPictureWindow.prototype, 'render', (that, _, ret) => {
-                if (pipRegistry.has(that.props.id)) {
-                    const data = pipRegistry.get(that.props.id);
-                    const [guildId, channelId, messageId] = that.props.id.split(':');
-
-                    if (data.ref.includes('discord')) {
-                        ret.props.children.props.children = [
-                            <DiscordEmbedPiP data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
-                        ]
-                    } else {
-                        ret.props.children.props.children = [
-                            <YouTubeFrame data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
-                        ]
-                    }
-                }
-            });
-
             Patcher.after(Embed.default.prototype, 'render', (that, args, ret) => {
                 if (!(that.props.embed.url && (that.props.embed.url.includes('youtu.be') || that.props.embed.url.includes('youtube.com/watch')))) {
                     return;
@@ -757,6 +854,20 @@ module.exports = (Plugin, Library) => {
                     child.props.children.props.embed.video.proxyURL = url.toString();
                 }
             });
+
+            Patcher.instead(PictureInPictureContainer.prototype, 'render', (that, args, original) => {
+                Logger.log(that)
+                Logger.log(args)
+
+                const origin = original();
+
+                // TODO: Prevent render in VC pop-out window
+                return <div>
+                    <p style={{color: 'white'}}>That's a ratio</p>
+                    {origin}
+                    <PiPWindowController maxX={origin.props.maxX} maxY={origin.props.maxY}/>
+                </div>
+            })
         }
 
         onStop() {
