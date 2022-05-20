@@ -3,8 +3,9 @@ import YouTube from 'react-youtube'
 module.exports = (Plugin, Library) => {
     'use strict';
 
-    const {Patcher, Logger, DiscordModules, WebpackModules} = Library;
-    const {React, Dispatcher, SelectedChannelStore, MessageStore, ChannelStore, SelectedGuildStore, ButtonData} = DiscordModules;
+    const {Patcher, Logger, DiscordModules, WebpackModules, Settings, PluginUtilities} = Library;
+    const {SettingPanel, Switch, Slider} = Settings;
+    const {React, Dispatcher, SelectedChannelStore, MessageStore, SelectedGuildStore, ButtonData} = DiscordModules;
 
     const Embed = BdApi.findModuleByProps('EmbedVideo');
     const PiPWindow = WebpackModules.find(m => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
@@ -13,11 +14,23 @@ module.exports = (Plugin, Library) => {
     const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
     const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
     const MessageAccessories = BdApi.findModuleByProps("MessageAccessories").MessageAccessories;
-    const PictureInPictureStore = BdApi.findModuleByProps("getDockedRect", "isOpen");
     const PictureInPictureContainer = BdApi.findModuleByDisplayName("FluxContainer(PictureInPictureContainer)");
 
     const embedRegistry = new Map();
     const pipRegistry = new Map();
+    let currentPiP = null;
+    let lastStartedVideo = null;
+
+    const defaultSettings = {
+        autoCapture: false,
+        scrollStep: 50
+    };
+
+    let settings = null;
+
+    function reloadSettings() {
+        settings = PluginUtilities.loadSettings("PiPEmbeds", defaultSettings);
+    }
 
     function base(urlStr) {
         const url = new URL(urlStr);
@@ -36,8 +49,6 @@ module.exports = (Plugin, Library) => {
             currentTime: currentTime,
             volume: volume
         });
-
-        currentPiPId = id;
 
         Dispatcher.dirtyDispatch({
             type: 'PIP_OPEN',
@@ -62,50 +73,53 @@ module.exports = (Plugin, Library) => {
         if (ref !== val.ref) {
             return null;
         }
-        pipRegistry.delete(id);
 
-        currentPiPId = null;
+        pipRegistry.delete(id);
 
         Dispatcher.dirtyDispatch({
             type: 'PIP_CLOSE',
-            id: id
+            next: next(1)
         });
 
         return val;
     }
 
-    function processPiPScroll(deltaY) {
-        // Return if only one PiP window
-        if (PictureInPictureStore.pipWindows.size <= 1) return;
+    function next(steps) {
+        const pipKeys = Array.from(pipRegistry.keys());
 
-        // Determine # of changes
-        const changes = Math.round(deltaY / 50);
+        if (pipKeys.length == 0) {
+            return null;
+        }
 
-        // Find current position in map and offset as needed
-        const pipKeys = Array.from(PictureInPictureStore.pipWindows.keys());
-        const idx = pipKeys.findIndex(key => key === PictureInPictureStore.pipWindow.id);
-        let newPos = idx + changes;
+        const idx = pipKeys.findIndex(key => key === currentPiP); // Find position to get next stream (will go to next if possible first)
+        let newPos = idx + steps;
         if (newPos < 0) {
             newPos = pipKeys.length + newPos % pipKeys.length;
-        } else if (newPos >= PictureInPictureStore.pipWindows.size) {
+        } else if (newPos >= pipRegistry.size) {
             newPos = newPos % pipKeys.length;
         }
+
+        return pipKeys[newPos];
+    }
+
+    function processPiPScroll(deltaY) {
+        // Return if only one PiP window
+        if (pipRegistry.size <= 1) {
+            BdApi.showToast('No other media sources to switch to!', {type: 'warning'});
+            return;
+        }
+
+        // Determine # of changes
+        const changes = Math.round(deltaY / settings.scrollStep);
 
         // Make sure players sync time with store before unmount
         Dispatcher.dirtyDispatch({type: 'PIP_SHOULD_UPDATE_CURRENT_TIME'});
 
-        /*Dispatcher.dirtyDispatch({
-            type: 'PIP_UPDATE_SELECTED_WINDOW',
-            id: pipKeys[newPos]
-        });*/
-
         Dispatcher.dirtyDispatch({
             type: 'PIP_OPEN',
-            id: pipKeys[newPos]
+            id: next(changes) // Find current position in map and offset as needed
         });
     }
-
-    let lastStartedVideo = null;
 
     function EmbedCapturePrompt(props) {
         return <div className='embedFrame' style={{width: props.width ?? '400px', height: props.height ?? '225px'}}>
@@ -264,7 +278,6 @@ module.exports = (Plugin, Library) => {
         }
 
         onCaptureRequest() {
-            // capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.original.props.src);
             Dispatcher.dirtyDispatch({
                 type: 'PIP_DISCORD_CLOSE',
                 messageId: this.state.messageId,
@@ -272,6 +285,10 @@ module.exports = (Plugin, Library) => {
                 guildId: this.state.guildId,
                 src: this.original.props.src
             });
+        }
+
+        componentDidMount() {
+            if (this.state.showCapturePrompt && settings.autoCapture) this.onCaptureRequest();
         }
 
         componentWillUnmount() {
@@ -429,7 +446,6 @@ module.exports = (Plugin, Library) => {
 
             let canGrab = false;
             if (messageId && channelId && props.embedId && hasPip(messageId, channelId, guildId, this.videoId)) {
-                // TODO: Setting to change auto-grab or no
                 canGrab = true;
             }
 
@@ -541,6 +557,10 @@ module.exports = (Plugin, Library) => {
             }
         }
 
+        componentDidMount() {
+            if (this.state.canGrab && settings.autoCapture) this.grabPlayer();
+        }
+
         componentWillUnmount() {
             Dispatcher.unsubscribe('PIP_EMBED_ID_UPDATE', this.onEmbedId);
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.onChannelSelect);
@@ -627,12 +647,13 @@ module.exports = (Plugin, Library) => {
         }
 
         onPiPOpen(e) {
-            Logger.log(e.id)
+            currentPiP = e.id;
             this.setState({currentId: e.id});
         }
 
-        onPiPClose() {
-            this.setState({currentId: null});
+        onPiPClose(e) {
+            currentPiP = e.next;
+            this.setState({currentId: e.next});
         }
 
         componentWillUnmount() {
@@ -642,8 +663,14 @@ module.exports = (Plugin, Library) => {
 
         renderEmbed() {
             const data = pipRegistry.get(this.state.currentId);
+
+            // I don't know why this happens sometimes, but it does
+            if (!data) {
+                Logger.err(`Failed to render embed with ID ${this.state.currentId}`);
+                return null;
+            }
+
             const [guildId, channelId, messageId] = this.state.currentId.split(':');
-            Logger.log(`RENDER CONTROLLER WITH ID ${this.state.currentId}`)
 
             if (data.ref.includes('discord')) {
                 return <DiscordEmbedPiP data={data} messageId={messageId} channelId={channelId} guildId={guildId.substring(1)}/>
@@ -653,10 +680,7 @@ module.exports = (Plugin, Library) => {
         }
 
         render() {
-            return <div>
-                {this.state.currentId ? this.renderEmbed() : null}
-                <p style={{color: "white"}}>{this.state.currentId}</p>
-            </div>
+            return this.state.currentId ? this.renderEmbed() : null;
         }
     }
 
@@ -702,6 +726,8 @@ module.exports = (Plugin, Library) => {
 
     return class extends Plugin {
         onStart() {
+            reloadSettings();
+
             BdApi.injectCSS('PiPEmbeds', `
                 .fullFrame {
                     width: 100%;
@@ -855,19 +881,19 @@ module.exports = (Plugin, Library) => {
                 }
             });
 
-            Patcher.instead(PictureInPictureContainer.prototype, 'render', (that, args, original) => {
-                Logger.log(that)
-                Logger.log(args)
-
+            Patcher.instead(PictureInPictureContainer.prototype, 'render', (that, _, original) => {
                 const origin = original();
 
-                // TODO: Prevent render in VC pop-out window
-                return <div>
-                    <p style={{color: 'white'}}>That's a ratio</p>
+                // If in a popout window, return originial only
+                if (that._reactInternals.index > 1) {
+                    return origin;
+                }
+
+                return <>
                     {origin}
                     <PiPWindowController maxX={origin.props.maxX} maxY={origin.props.maxY}/>
-                </div>
-            })
+                </>
+            });
         }
 
         onStop() {
@@ -876,6 +902,18 @@ module.exports = (Plugin, Library) => {
             Dispatcher.unsubscribe('CHANNEL_SELECT', this.channelSelect);
             Dispatcher.unsubscribe('LOAD_MESSAGES_SUCCESS', this.channelSelect);
             Patcher.unpatchAll();
+        }
+
+        getSettingsPanel() {
+            reloadSettings();
+
+            return new SettingPanel(() => { PluginUtilities.saveSettings("PiPEmbeds", settings); }, 
+                new Switch("Auto-Capture", "Capture picture-in-picture media automatically when the parent message is loaded.", settings.autoCapture, isOn => settings.autoCapture = isOn),
+                new Slider("Media Switch Scroll Distance", "How far to scroll over the picture-in-picture window before it switches to the next media source.", 1, 900, settings.scrollStep, val => settings.scrollStep = val, {
+                    defaultValue: defaultSettings.scrollStep,
+                    markers: Array.from(Array(19).keys()).map((e, i) => i == 0 ? e + 1 : e * 50)
+                })
+            ).getElement();
         }
 
         forceUpdateEmbedIds(msg) {
