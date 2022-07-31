@@ -7,13 +7,13 @@
             "github_username": "ImTheSquid",
             "twitter_username": "ImTheSquid11"
         }],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "description": "Enables playback of embedded videos anywhere in Discord through the picture-in-picture window",
         "github": "https://github.com/ImTheSquid/PiPEmbeds",
         "github_raw": "https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js"
     },
     "changelog": [
-        {"title": "1.0.0", "items": ["Initial Release"]}
+        {"title": "Bug Fixes", "items": ["Fixed issue where fullscreened Discord videos didn't take up full area."]}
     ],
     "main": "bundled.js"
 }

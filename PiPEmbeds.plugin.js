@@ -28,7 +28,7 @@
 @else@*/
 
 module.exports = (() => {
-    const config = {"info":{"name":"PiPEmbeds","authors":[{"name":"ImTheSquid","discord_id":"262055523896131584","github_username":"ImTheSquid","twitter_username":"ImTheSquid11"}],"version":"1.0.0","description":"Enables playback of embedded videos anywhere in Discord through the picture-in-picture window","github":"https://github.com/ImTheSquid/PiPEmbeds","github_raw":"https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js"},"changelog":[{"title":"1.0.0","items":["Initial Release"]}],"main":"bundled.js"};
+    const config = {"info":{"name":"PiPEmbeds","authors":[{"name":"ImTheSquid","discord_id":"262055523896131584","github_username":"ImTheSquid","twitter_username":"ImTheSquid11"}],"version":"1.0.1","description":"Enables playback of embedded videos anywhere in Discord through the picture-in-picture window","github":"https://github.com/ImTheSquid/PiPEmbeds","github_raw":"https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js"},"changelog":[{"title":"Bug Fixes","items":["Fixed issue where fullscreened Discord videos didn't take up full area."]}],"main":"bundled.js"};
 
     return !global.ZeresPluginLibrary ? class {
         constructor() {this._config = config;}
@@ -4494,6 +4494,8 @@ var import_react_youtube = __toESM(require_YouTube());
     constructor(props) {
       super(props);
       this.original = props.original;
+      this.original.props.width = 1e6;
+      this.original.props.height = 1e6;
       this.that = props.that;
       const url = new URL(this.that.props.src);
       this.id = url.searchParams.get("pipembedsid");

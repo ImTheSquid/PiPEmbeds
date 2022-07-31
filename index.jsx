@@ -313,6 +313,8 @@ module.exports = (Plugin, Library) => {
             super(props);
 
             this.original = props.original;
+            this.original.props.width = 1000000;
+            this.original.props.height = 1000000;
             this.that = props.that;
             const url = new URL(this.that.props.src);
             this.id = url.searchParams.get('pipembedsid');
