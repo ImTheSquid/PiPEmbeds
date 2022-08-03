@@ -28,7 +28,7 @@
 @else@*/
 
 module.exports = (() => {
-    const config = {"info":{"name":"PiPEmbeds","authors":[{"name":"ImTheSquid","discord_id":"262055523896131584","github_username":"ImTheSquid","twitter_username":"ImTheSquid11"}],"version":"1.0.1","description":"Enables playback of embedded videos anywhere in Discord through the picture-in-picture window","github":"https://github.com/ImTheSquid/PiPEmbeds","github_raw":"https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js"},"changelog":[{"title":"Bug Fixes","items":["Fixed issue where fullscreened Discord videos didn't take up full area."]}],"main":"bundled.js"};
+    const config = {"info":{"name":"PiPEmbeds","authors":[{"name":"ImTheSquid","discord_id":"262055523896131584","github_username":"ImTheSquid","twitter_username":"ImTheSquid11"}],"version":"1.0.2","description":"Enables playback of embedded videos anywhere in Discord through the picture-in-picture window","github":"https://github.com/ImTheSquid/PiPEmbeds","github_raw":"https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js"},"changelog":[{"title":"Bug Fixes","items":["Converted `dirtyDispatch` calls to `dispatch`"]}],"main":"bundled.js"};
 
     return !global.ZeresPluginLibrary ? class {
         constructor() {this._config = config;}
@@ -4265,7 +4265,7 @@ var import_react_youtube = __toESM(require_YouTube());
       currentTime,
       volume
     });
-    Dispatcher.dirtyDispatch({
+    Dispatcher.dispatch({
       type: "PIP_OPEN",
       id
     });
@@ -4278,13 +4278,13 @@ var import_react_youtube = __toESM(require_YouTube());
     if (!pipRegistry.has(id)) {
       return null;
     }
-    Dispatcher.dirtyDispatch({ type: "PIP_SHOULD_UPDATE_CURRENT_TIME" });
+    Dispatcher.dispatch({ type: "PIP_SHOULD_UPDATE_CURRENT_TIME" });
     const val = pipRegistry.get(id);
     if (ref !== val.ref) {
       return null;
     }
     pipRegistry.delete(id);
-    Dispatcher.dirtyDispatch({
+    Dispatcher.dispatch({
       type: "PIP_CLOSE",
       next: next(1)
     });
@@ -4310,8 +4310,8 @@ var import_react_youtube = __toESM(require_YouTube());
       return;
     }
     const changes = Math.round(deltaY / settings.scrollStep);
-    Dispatcher.dirtyDispatch({ type: "PIP_SHOULD_UPDATE_CURRENT_TIME" });
-    Dispatcher.dirtyDispatch({
+    Dispatcher.dispatch({ type: "PIP_SHOULD_UPDATE_CURRENT_TIME" });
+    Dispatcher.dispatch({
       type: "PIP_OPEN",
       id: next(changes)
     });
@@ -4460,7 +4460,7 @@ var import_react_youtube = __toESM(require_YouTube());
       this.setState({ showCapturePrompt: false });
     }
     onCaptureRequest() {
-      Dispatcher.dirtyDispatch({
+      Dispatcher.dispatch({
         type: "PIP_DISCORD_CLOSE",
         messageId: this.state.messageId,
         channelId: this.state.channelId,
@@ -5054,7 +5054,7 @@ var import_react_youtube = __toESM(require_YouTube());
           addedEmbeds.set(embed.id, messageInfo);
         }
       }
-      Dispatcher.dirtyDispatch({
+      Dispatcher.dispatch({
         type: "PIP_EMBED_ID_UPDATE",
         added: addedEmbeds
       });

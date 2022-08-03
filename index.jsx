@@ -50,7 +50,7 @@ module.exports = (Plugin, Library) => {
             volume: volume
         });
 
-        Dispatcher.dirtyDispatch({
+        Dispatcher.dispatch({
             type: 'PIP_OPEN',
             id: id
         });
@@ -67,7 +67,7 @@ module.exports = (Plugin, Library) => {
         }
 
         // Request that all PiP players update the current time of respective videos in preparation for possible capture
-        Dispatcher.dirtyDispatch({type: 'PIP_SHOULD_UPDATE_CURRENT_TIME'});
+        Dispatcher.dispatch({type: 'PIP_SHOULD_UPDATE_CURRENT_TIME'});
 
         const val = pipRegistry.get(id);
         if (ref !== val.ref) {
@@ -76,7 +76,7 @@ module.exports = (Plugin, Library) => {
 
         pipRegistry.delete(id);
 
-        Dispatcher.dirtyDispatch({
+        Dispatcher.dispatch({
             type: 'PIP_CLOSE',
             next: next(1)
         });
@@ -113,9 +113,9 @@ module.exports = (Plugin, Library) => {
         const changes = Math.round(deltaY / settings.scrollStep);
 
         // Make sure players sync time with store before unmount
-        Dispatcher.dirtyDispatch({type: 'PIP_SHOULD_UPDATE_CURRENT_TIME'});
+        Dispatcher.dispatch({type: 'PIP_SHOULD_UPDATE_CURRENT_TIME'});
 
-        Dispatcher.dirtyDispatch({
+        Dispatcher.dispatch({
             type: 'PIP_OPEN',
             id: next(changes) // Find current position in map and offset as needed
         });
@@ -278,7 +278,7 @@ module.exports = (Plugin, Library) => {
         }
 
         onCaptureRequest() {
-            Dispatcher.dirtyDispatch({
+            Dispatcher.dispatch({
                 type: 'PIP_DISCORD_CLOSE',
                 messageId: this.state.messageId,
                 channelId: this.state.channelId,
@@ -941,7 +941,7 @@ module.exports = (Plugin, Library) => {
                 }
             }
 
-            Dispatcher.dirtyDispatch({
+            Dispatcher.dispatch({
                 type: 'PIP_EMBED_ID_UPDATE',
                 added: addedEmbeds
             });
