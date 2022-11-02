@@ -2,19 +2,33 @@ import YouTube from 'react-youtube'
 
 module.exports = (Plugin, Library) => {
     'use strict';
+    const {Webpack} = BdApi;
 
     const {Patcher, Logger, DiscordModules, WebpackModules, Settings, PluginUtilities} = Library;
     const {SettingPanel, Switch, Slider} = Settings;
     const {React, Dispatcher, SelectedChannelStore, MessageStore, SelectedGuildStore, ButtonData} = DiscordModules;
 
-    const Embed = BdApi.findModuleByProps('EmbedVideo');
-    const PiPWindow = WebpackModules.find(m => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
-    const Transitions = BdApi.findModuleByProps("transitionTo");
-    const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
-    const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
+    // Fixed
+    const Embed = BdApi.Webpack.getModule(BdApi.Webpack.Filters.byPrototypeFields("render", "renderVideo"));
+    const Transitions = BdApi.Webpack.getModule(m => Object.values(m).filter(v => v?.toString).map(v => v.toString()).some(v => v.includes("transitionTo - Transitioning to")));
+    const transitionTo = Transitions[getFunctionNameFromString(Transitions, ["transitionTo - TransitioningTo"])];
+    const MessageAccessories = Object.values(Webpack.getModule(m => Object.values(m).some(k => k?.prototype && Object.keys(k.prototype).includes("renderAttachments")))).find(v => v?.prototype && Object.keys(v.prototype).includes("renderAttachments"));
+    const VideoPlayPill = BdApi.Webpack.getModule(m => Object.values(m).filter(v => v?.toString).map(v => v.toString()).some(v => v.includes("renderLinkComponent")));
+    const PiPWindow = BdApi.Webpack.getModule(m => Object.values(m).filter(v => v?.toString).map(v => v.toString()).some(v => v.includes("PIP")));
+    const MediaPlayer = BdApi.Webpack.getModule(BdApi.Webpack.Filters.byPrototypeFields("renderVideo"));
+
+    // Broken
     const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
-    const MessageAccessories = BdApi.findModuleByProps("MessageAccessories").MessageAccessories;
     const PictureInPictureContainer = BdApi.findModuleByDisplayName("FluxContainer(PictureInPictureContainer)");
+
+    function getFunctionNameFromString(obj, search) {
+        for (const [k, v] of Object.entries(obj)) {
+            if (search.every(str => v?.toString().match(str))) {
+                return k;
+            }
+        }
+        return null;
+    }
 
     const embedRegistry = new Map();
     const pipRegistry = new Map();
@@ -214,7 +228,7 @@ module.exports = (Plugin, Library) => {
         }
 
         render() {
-            return <PiPControls onDoubleClick={() => Transitions.transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`)} onClick={this.onClick} onCloseClick={this.onCaptureClick}>
+            return <PiPControls onDoubleClick={() => transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`)} onClick={this.onClick} onCloseClick={this.onCaptureClick}>
                 <video src={this.src} autoPlay ref={this.ref} style={this.state.width ? {width: this.state.width, height: this.state.height} : {}}/>
             </PiPControls>
         }
@@ -588,7 +602,7 @@ module.exports = (Plugin, Library) => {
         }
 
         onDoubleClick() {
-            Transitions.transitionTo(`/channels/${this.state.guildId}/${this.state.channelId}/${this.state.messageId}`);
+            transitionTo(`/channels/${this.state.guildId}/${this.state.channelId}/${this.state.messageId}`);
         }
 
         renderPlayer() {
@@ -609,7 +623,7 @@ module.exports = (Plugin, Library) => {
         renderVideoPreview() {
             return <div className='embedFrame'>
                 <img src={`https://img.youtube.com/vi/${this.videoId}/mqdefault.jpg`} className='embedThumbnail' onClick={() => this.setState({started: true})} style={{maxWidth: '100%', maxHeight:'100%'}}/>
-                {React.createElement(VideoPlayPill, {
+                {React.createElement(VideoPlayPill[getFunctionNameFromString(VideoPlayPill, "renderLinkComponent")], {
                     externalURL: `https://youtube.com/watch?v=${this.videoId}`,
                     onPlay: () => {
                         this.setState({started: true});
@@ -711,7 +725,7 @@ module.exports = (Plugin, Library) => {
 
             windows.set("PIPEMBEDS", pipObj);
 
-            return React.createElement(PiPWindow.default, {
+            return React.createElement(PiPWindow, {
                 pipWindows: windows,
                 selectedPIPWindow: pipObj,
                 maxX: this.maxX,
@@ -817,7 +831,7 @@ module.exports = (Plugin, Library) => {
                 }
             `);
 
-            Patcher.after(Embed.default.prototype, 'render', (that, args, ret) => {
+            Patcher.after(Embed.prototype, 'render', (that, args, ret) => {
                 if (!(that.props.embed.url && (that.props.embed.url.includes('youtu.be') || that.props.embed.url.includes('youtube.com/watch')))) {
                     return;
                 }

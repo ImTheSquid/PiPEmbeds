@@ -15,5 +15,5 @@
     "changelog": [
         {"title": "Bug Fixes", "items": ["Converted `dirtyDispatch` calls to `dispatch`"]}
     ],
-    "main": "bundled.js"
+    "main": "build/bundled.js"
 }

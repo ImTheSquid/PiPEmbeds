@@ -1,5 +1,9 @@
 /**
  * @name PiPEmbeds
+ * @description Enables playback of embedded videos anywhere in Discord through the picture-in-picture window
+ * @version 1.0.2
+ * @author ImTheSquid
+ * @authorId 262055523896131584
  * @website https://github.com/ImTheSquid/PiPEmbeds
  * @source https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js
  */
@@ -26,50 +30,82 @@
     WScript.Quit();
 
 @else@*/
-
-module.exports = (() => {
-    const config = {"info":{"name":"PiPEmbeds","authors":[{"name":"ImTheSquid","discord_id":"262055523896131584","github_username":"ImTheSquid","twitter_username":"ImTheSquid11"}],"version":"1.0.2","description":"Enables playback of embedded videos anywhere in Discord through the picture-in-picture window","github":"https://github.com/ImTheSquid/PiPEmbeds","github_raw":"https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js"},"changelog":[{"title":"Bug Fixes","items":["Converted `dirtyDispatch` calls to `dispatch`"]}],"main":"bundled.js"};
-
-    return !global.ZeresPluginLibrary ? class {
-        constructor() {this._config = config;}
-        getName() {return config.info.name;}
-        getAuthor() {return config.info.authors.map(a => a.name).join(", ");}
-        getDescription() {return config.info.description;}
-        getVersion() {return config.info.version;}
-        load() {
-            BdApi.showConfirmationModal("Library Missing", `The library plugin needed for ${config.info.name} is missing. Please click Download Now to install it.`, {
-                confirmText: "Download Now",
-                cancelText: "Cancel",
-                onConfirm: () => {
-                    require("request").get("https://rauenzi.github.io/BDPluginLibrary/release/0PluginLibrary.plugin.js", async (error, response, body) => {
-                        if (error) return require("electron").shell.openExternal("https://betterdiscord.net/ghdl?url=https://raw.githubusercontent.com/rauenzi/BDPluginLibrary/master/release/0PluginLibrary.plugin.js");
-                        await new Promise(r => require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0PluginLibrary.plugin.js"), body, r));
+const config = {
+    info: {
+        name: "PiPEmbeds",
+        authors: [
+            {
+                name: "ImTheSquid",
+                discord_id: "262055523896131584",
+                github_username: "ImTheSquid",
+                twitter_username: "ImTheSquid11"
+            }
+        ],
+        version: "1.0.2",
+        description: "Enables playback of embedded videos anywhere in Discord through the picture-in-picture window",
+        github: "https://github.com/ImTheSquid/PiPEmbeds",
+        github_raw: "https://raw.githubusercontent.com/ImTheSquid/PiPEmbeds/master/PiPEmbeds.plugin.js"
+    },
+    changelog: [
+        {
+            title: "Bug Fixes",
+            items: [
+                "Converted `dirtyDispatch` calls to `dispatch`"
+            ]
+        }
+    ],
+    main: "build/bundled.js"
+};
+class Dummy {
+    constructor() {this._config = config;}
+    start() {}
+    stop() {}
+}
+ 
+if (!global.ZeresPluginLibrary) {
+    BdApi.showConfirmationModal("Library Missing", `The library plugin needed for ${config.name ?? config.info.name} is missing. Please click Download Now to install it.`, {
+        confirmText: "Download Now",
+        cancelText: "Cancel",
+        onConfirm: () => {
+            require("request").get("https://betterdiscord.app/gh-redirect?id=9", async (err, resp, body) => {
+                if (err) return require("electron").shell.openExternal("https://betterdiscord.app/Download?id=9");
+                if (resp.statusCode === 302) {
+                    require("request").get(resp.headers.location, async (error, response, content) => {
+                        if (error) return require("electron").shell.openExternal("https://betterdiscord.app/Download?id=9");
+                        await new Promise(r => require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0PluginLibrary.plugin.js"), content, r));
                     });
+                }
+                else {
+                    await new Promise(r => require("fs").writeFile(require("path").join(BdApi.Plugins.folder, "0PluginLibrary.plugin.js"), body, r));
                 }
             });
         }
-        start() {}
-        stop() {}
-    } : (([Plugin, Api]) => {
-        const plugin = (Plugin, Library) => {
+    });
+}
+ 
+module.exports = !global.ZeresPluginLibrary ? Dummy : (([Plugin, Api]) => {
+     const plugin = (Plugin, Library) => {
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __markAsModule = (target) => __defProp(target, "__esModule", { value: true });
 var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  return mod || (0, cb[Object.keys(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+var __reExport = (target, module2, desc) => {
+  if (module2 && typeof module2 === "object" || typeof module2 === "function") {
+    for (let key of __getOwnPropNames(module2))
+      if (!__hasOwnProp.call(target, key) && key !== "default")
+        __defProp(target, key, { get: () => module2[key], enumerable: !(desc = __getOwnPropDesc(module2, key)) || desc.enumerable });
   }
-  return to;
+  return target;
 };
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));
+var __toModule = (module2) => {
+  return __reExport(__markAsModule(__defProp(module2 != null ? __create(__getProtoOf(module2)) : {}, "default", module2 && module2.__esModule && "default" in module2 ? { get: () => module2.default, enumerable: true } : { value: module2, enumerable: true })), module2);
+};
 
 // node_modules/react-is/cjs/react-is.production.min.js
 var require_react_is_production_min = __commonJS({
@@ -2836,7 +2872,7 @@ var require_react_development = __commonJS({
           ReactCurrentBatchConfig.transition = {};
           var currentTransition = ReactCurrentBatchConfig.transition;
           {
-            ReactCurrentBatchConfig.transition._updatedFibers = /* @__PURE__ */ new Set();
+            ReactCurrentBatchConfig.transition._updatedFibers = new Set();
           }
           try {
             scope();
@@ -3606,9 +3642,9 @@ var require_node = __commonJS({
       var useColors2 = this.useColors;
       if (useColors2) {
         var c = this.color;
-        var prefix = "  \x1B[3" + c + ";1m" + name + " \x1B[0m";
+        var prefix = "  [3" + c + ";1m" + name + " [0m";
         args[0] = prefix + args[0].split("\n").join("\n" + prefix);
-        args.push("\x1B[3" + c + "m+" + exports2.humanize(this.diff) + "\x1B[0m");
+        args.push("[3" + c + "m+" + exports2.humanize(this.diff) + "[0m");
       } else {
         args[0] = new Date().toUTCString() + " " + name + " " + args[0];
       }
@@ -3980,7 +4016,7 @@ var require_YouTube = __commonJS({
       for (var name in all)
         __defProp2(target, name, { get: all[name], enumerable: true });
     };
-    var __copyProps2 = (to, from, except, desc) => {
+    var __copyProps = (to, from, except, desc) => {
       if (from && typeof from === "object" || typeof from === "function") {
         for (let key of __getOwnPropNames2(from))
           if (!__hasOwnProp2.call(to, key) && key !== except)
@@ -3988,17 +4024,17 @@ var require_YouTube = __commonJS({
       }
       return to;
     };
-    var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps2(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target, mod));
-    var __toCommonJS = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
+    var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target, mod));
+    var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
     var YouTube_exports = {};
     __export(YouTube_exports, {
       default: () => YouTube_default
     });
     module2.exports = __toCommonJS(YouTube_exports);
-    var import_prop_types = __toESM2(require_prop_types());
-    var import_react = __toESM2(require_react());
-    var import_fast_deep_equal = __toESM2(require_fast_deep_equal());
-    var import_youtube_player = __toESM2(require_dist());
+    var import_prop_types = __toESM(require_prop_types());
+    var import_react = __toESM(require_react());
+    var import_fast_deep_equal = __toESM(require_fast_deep_equal());
+    var import_youtube_player = __toESM(require_dist());
     function shouldUpdateVideo(prevProps, props) {
       if (prevProps.videoId !== props.videoId) {
         return true;
@@ -4224,22 +4260,32 @@ var require_YouTube = __commonJS({
   }
 });
 
-// index.jsx
-var import_react_youtube = __toESM(require_YouTube());
+// src/PiPEmbeds/index.jsx
+var import_react_youtube = __toModule(require_YouTube());
   "use strict";
+  const { Webpack } = BdApi;
   const { Patcher, Logger, DiscordModules, WebpackModules, Settings, PluginUtilities } = Library;
   const { SettingPanel, Switch, Slider } = Settings;
   const { React, Dispatcher, SelectedChannelStore, MessageStore, SelectedGuildStore, ButtonData } = DiscordModules;
-  const Embed = BdApi.findModuleByProps("EmbedVideo");
-  const PiPWindow = WebpackModules.find((m) => m.PictureInPictureWindow?.displayName === "PictureInPictureWindow");
-  const Transitions = BdApi.findModuleByProps("transitionTo");
-  const VideoPlayPill = BdApi.findModuleByDisplayName("VideoPlayPill");
-  const MediaPlayer = BdApi.findModuleByDisplayName("MediaPlayer");
+  const Embed = BdApi.Webpack.getModule(BdApi.Webpack.Filters.byPrototypeFields("render", "renderVideo"));
+  const Transitions = BdApi.Webpack.getModule((m) => Object.values(m).filter((v) => v?.toString).map((v) => v.toString()).some((v) => v.includes("transitionTo - Transitioning to")));
+  const transitionTo = Transitions[getFunctionNameFromString(Transitions, ["transitionTo - TransitioningTo"])];
+  const MessageAccessories = Object.values(Webpack.getModule((m) => Object.values(m).some((k) => k?.prototype && Object.keys(k.prototype).includes("renderAttachments")))).find((v) => v?.prototype && Object.keys(v.prototype).includes("renderAttachments"));
+  const VideoPlayPill = BdApi.Webpack.getModule((m) => Object.values(m).filter((v) => v?.toString).map((v) => v.toString()).some((v) => v.includes("renderLinkComponent")));
+  const PiPWindow = BdApi.Webpack.getModule((m) => Object.values(m).filter((v) => v?.toString).map((v) => v.toString()).some((v) => v.includes("PIP")));
+  const MediaPlayer = BdApi.Webpack.getModule(BdApi.Webpack.Filters.byPrototypeFields("renderVideo"));
   const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
-  const MessageAccessories = BdApi.findModuleByProps("MessageAccessories").MessageAccessories;
   const PictureInPictureContainer = BdApi.findModuleByDisplayName("FluxContainer(PictureInPictureContainer)");
-  const embedRegistry = /* @__PURE__ */ new Map();
-  const pipRegistry = /* @__PURE__ */ new Map();
+  function getFunctionNameFromString(obj, search) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (search.every((str) => v?.toString().match(str))) {
+        return k;
+      }
+    }
+    return null;
+  }
+  const embedRegistry = new Map();
+  const pipRegistry = new Map();
   let currentPiP = null;
   let lastStartedVideo = null;
   const defaultSettings = {
@@ -4400,7 +4446,7 @@ var import_react_youtube = __toESM(require_YouTube());
     }
     render() {
       return /* @__PURE__ */ React.createElement(PiPControls, {
-        onDoubleClick: () => Transitions.transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`),
+        onDoubleClick: () => transitionTo(`/channels/${this.guildId}/${this.channelId}/${this.messageId}`),
         onClick: this.onClick,
         onCloseClick: this.onCaptureClick
       }, /* @__PURE__ */ React.createElement("video", {
@@ -4717,7 +4763,7 @@ var import_react_youtube = __toESM(require_YouTube());
       capturePiP(this.state.messageId, this.state.channelId, this.state.guildId, this.videoId);
     }
     onDoubleClick() {
-      Transitions.transitionTo(`/channels/${this.state.guildId}/${this.state.channelId}/${this.state.messageId}`);
+      transitionTo(`/channels/${this.state.guildId}/${this.state.channelId}/${this.state.messageId}`);
     }
     renderPlayer() {
       const opts = {
@@ -4748,7 +4794,7 @@ var import_react_youtube = __toESM(require_YouTube());
         className: "embedThumbnail",
         onClick: () => this.setState({ started: true }),
         style: { maxWidth: "100%", maxHeight: "100%" }
-      }), React.createElement(VideoPlayPill, {
+      }), React.createElement(VideoPlayPill[getFunctionNameFromString(VideoPlayPill, "renderLinkComponent")], {
         externalURL: `https://youtube.com/watch?v=${this.videoId}`,
         onPlay: () => {
           this.setState({ started: true });
@@ -4833,7 +4879,7 @@ var import_react_youtube = __toESM(require_YouTube());
       };
     }
     render() {
-      const windows = /* @__PURE__ */ new Map();
+      const windows = new Map();
       const pipObj = {
         component: "EMBED",
         docked: false,
@@ -4842,7 +4888,7 @@ var import_react_youtube = __toESM(require_YouTube());
         props: {}
       };
       windows.set("PIPEMBEDS", pipObj);
-      return React.createElement(PiPWindow.default, {
+      return React.createElement(PiPWindow, {
         pipWindows: windows,
         selectedPIPWindow: pipObj,
         maxX: this.maxX,
@@ -4945,7 +4991,7 @@ var import_react_youtube = __toESM(require_YouTube());
                     align-items: center;
                 }
             `);
-      Patcher.after(Embed.default.prototype, "render", (that, args, ret) => {
+      Patcher.after(Embed.prototype, "render", (that, args, ret) => {
         if (!(that.props.embed.url && (that.props.embed.url.includes("youtu.be") || that.props.embed.url.includes("youtube.com/watch")))) {
           return;
         }
@@ -5038,7 +5084,7 @@ var import_react_youtube = __toESM(require_YouTube());
     forceUpdateEmbedIds(msg) {
       const channelId = SelectedChannelStore.getChannelId();
       const messages = msg ? [msg] : MessageStore.getMessages(channelId)._array;
-      const addedEmbeds = /* @__PURE__ */ new Map();
+      const addedEmbeds = new Map();
       for (const message of messages) {
         const messageInfo = {
           messageId: message.id,
@@ -5061,7 +5107,6 @@ var import_react_youtube = __toESM(require_YouTube());
     }
   };
 };
-        return plugin(Plugin, Api);
-    })(global.ZeresPluginLibrary.buildPlugin(config));
-})();
+     return plugin(Plugin, Api);
+})(global.ZeresPluginLibrary.buildPlugin(config));
 /*@end@*/
