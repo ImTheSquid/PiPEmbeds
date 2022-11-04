@@ -4273,9 +4273,11 @@ var import_react_youtube = __toModule(require_YouTube());
   const MessageAccessories = Object.values(Webpack.getModule((m) => Object.values(m).some((k) => k?.prototype && Object.keys(k.prototype).includes("renderAttachments")))).find((v) => v?.prototype && Object.keys(v.prototype).includes("renderAttachments"));
   const VideoPlayPill = BdApi.Webpack.getModule((m) => Object.values(m).filter((v) => v?.toString).map((v) => v.toString()).some((v) => v.includes("renderLinkComponent")));
   const PiPWindow = BdApi.Webpack.getModule((m) => Object.values(m).filter((v) => v?.toString).map((v) => v.toString()).some((v) => v.includes("PIP")));
-  const MediaPlayer = BdApi.Webpack.getModule(BdApi.Webpack.Filters.byPrototypeFields("renderVideo"));
-  const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
-  const PictureInPictureContainer = BdApi.findModuleByDisplayName("FluxContainer(PictureInPictureContainer)");
+  const MediaPlayerRoot = BdApi.Webpack.getModule((m) => Object.values(m).some((v) => v?.prototype && Object.keys(v.prototype).includes("renderControls")));
+  const MediaPlayer = MediaPlayerRoot[Object.entries(MediaPlayerRoot).filter(([k, v]) => v?.prototype && Object.keys(v.prototype).includes("renderControls"))[0][0]];
+  const PictureInPictureContainerRoot = BdApi.Webpack.getModule((m) => Object.values(m).some((v) => v?.prototype && Object.keys(v.prototype).includes("calculateDecayingPosition")));
+  const PictureInPictureContainer = PictureInPictureContainerRoot[Object.entries(PictureInPictureContainerRoot).filter(([k, v]) => v?.prototype && Object.keys(v.prototype).includes("calculateDecayingPosition"))[0][0]];
+  const AttachmentContent = BdApi.Webpack.getModule(BdApi.Webpack.Filters.byPrototypeFields("renderVideo"));
   function getFunctionNameFromString(obj, search) {
     for (const [k, v] of Object.entries(obj)) {
       if (search.every((str) => v?.toString().match(str))) {
@@ -5014,16 +5016,13 @@ var import_react_youtube = __toModule(require_YouTube());
       Dispatcher.subscribe("CHANNEL_SELECT", this.channelSelect);
       Dispatcher.subscribe("LOAD_MESSAGES_SUCCESS", this.channelSelect);
       Patcher.instead(MediaPlayer.prototype, "renderVideo", (that, args, original) => {
+        Logger.log("GOT HERE");
+        Logger.log(that);
+        Logger.log(args);
+        Logger.log("RENDER");
         return /* @__PURE__ */ React.createElement(EmbedFrameShim, {
           original: original(...args),
           that
-        });
-      });
-      Patcher.instead(AttachmentContent, "renderVideoComponent", (_, [arg], original) => {
-        return /* @__PURE__ */ React.createElement(EmbedFrameOverlay, {
-          original: original(arg),
-          width: arg.width,
-          height: arg.height
         });
       });
       Patcher.after(MessageAccessories.prototype, "renderAttachments", (that, [arg], ret) => {

@@ -15,11 +15,17 @@ module.exports = (Plugin, Library) => {
     const MessageAccessories = Object.values(Webpack.getModule(m => Object.values(m).some(k => k?.prototype && Object.keys(k.prototype).includes("renderAttachments")))).find(v => v?.prototype && Object.keys(v.prototype).includes("renderAttachments"));
     const VideoPlayPill = BdApi.Webpack.getModule(m => Object.values(m).filter(v => v?.toString).map(v => v.toString()).some(v => v.includes("renderLinkComponent")));
     const PiPWindow = BdApi.Webpack.getModule(m => Object.values(m).filter(v => v?.toString).map(v => v.toString()).some(v => v.includes("PIP")));
-    const MediaPlayer = BdApi.Webpack.getModule(BdApi.Webpack.Filters.byPrototypeFields("renderVideo"));
+
+    const MediaPlayerRoot = BdApi.Webpack.getModule(m => Object.values(m).some(v => v?.prototype && Object.keys(v.prototype).includes("renderControls")));
+    const MediaPlayer = MediaPlayerRoot[Object.entries(MediaPlayerRoot).filter(([k, v]) => v?.prototype && Object.keys(v.prototype).includes("renderControls"))[0][0]];
+
+    const PictureInPictureContainerRoot = BdApi.Webpack.getModule(m => Object.values(m).some(v => v?.prototype && Object.keys(v.prototype).includes("calculateDecayingPosition")));
+    const PictureInPictureContainer = PictureInPictureContainerRoot[Object.entries(PictureInPictureContainerRoot).filter(([k, v]) => v?.prototype && Object.keys(v.prototype).includes("calculateDecayingPosition"))[0][0]];
 
     // Broken
-    const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
-    const PictureInPictureContainer = BdApi.findModuleByDisplayName("FluxContainer(PictureInPictureContainer)");
+    // Maybe: BdApi.Webpack.getModule(m => m.b_ && m.Rp && m.A7 && m.DR), function that contains array with "onMute" and "autoMute"
+    // const AttachmentContent = BdApi.findModuleByProps("renderPlaintextFilePreview");
+    const AttachmentContent = BdApi.Webpack.getModule(BdApi.Webpack.Filters.byPrototypeFields("renderVideo"));
 
     function getFunctionNameFromString(obj, search) {
         for (const [k, v] of Object.entries(obj)) {
